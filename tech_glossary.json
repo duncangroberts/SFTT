@@ -1,0 +1,115 @@
+﻿{
+  "bias_substrings": [
+    "ai",
+    "ml",
+    "llm",
+    "agent",
+    "quantum",
+    "robot",
+    "fusion",
+    "battery",
+    "crypto",
+    "block",
+    "metaverse",
+    "spatial",
+    "neural",
+    "gpt",
+    "compute",
+    "chip",
+    "silicon",
+    "semiconductor",
+    "photonic",
+    "biotech",
+    "genomic",
+    "climate",
+    "carbon",
+    "autonomous",
+    "drone",
+    "satellite",
+    "wearable",
+    "sensor",
+    "edge",
+    "cloud",
+    "cyber",
+    "fintech",
+    "energy"
+  ],
+  "domains": {
+    "Artificial Intelligence": [
+      "ai",
+      "artificial intelligence",
+      "machine learning",
+      "ml",
+      "deep learning",
+      "neural network",
+      "generative ai",
+      "large language model",
+      "llm",
+      "ai agent",
+      "autonomous agent",
+      "foundation model"
+    ],
+    "Robotics": [
+      "robot",
+      "robotics",
+      "cobot",
+      "automation",
+      "autonomous system",
+      "autonomous vehicle",
+      "drone",
+      "uav",
+      "humanoid"
+    ],
+    "Quantum": [
+      "quantum",
+      "quantum computing",
+      "qubit",
+      "quantum supremacy",
+      "qpu"
+    ],
+    "Energy": [
+      "battery",
+      "fusion",
+      "grid storage",
+      "green hydrogen",
+      "renewable",
+      "energy storage",
+      "solid state battery",
+      "carbon capture"
+    ],
+    "Space": [
+      "satellite",
+      "launch vehicle",
+      "spacecraft",
+      "space tech",
+      "orbital",
+      "constellation"
+    ],
+    "Security": [
+      "cybersecurity",
+      "zero trust",
+      "secure enclave",
+      "post-quantum",
+      "threat intelligence",
+      "security automation"
+    ],
+    "Biotech": [
+      "biotech",
+      "genomics",
+      "crispr",
+      "synthetic biology",
+      "bioinformatics",
+      "cell therapy"
+    ],
+    "Compute": [
+      "gpu",
+      "accelerator",
+      "chip design",
+      "silicon",
+      "semiconductor",
+      "photonic",
+      "fab",
+      "foundry"
+    ]
+  }
+}

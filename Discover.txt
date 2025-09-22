@@ -1,0 +1,367 @@
+Discover Rewrite — Complete Implementation Brief (Codex)
+0) Scope & Non-negotiables
+
+Rewrite the existing Discover tab as an isolated module under discover/.
+
+Separate DB: use discover/db/discover.sqlite only. Do not read/write any other app DBs.
+
+On demand: fetch/process when user clicks Run Now. No schedulers.
+
+Aggregated analytics: all charts/tables combine HN + GitHub + arXiv/Papers With Code. No per-source charts.
+
+Embeddings enabled: use a small local sentence-transformer; LLM not required.
+
+arXiv scope = ALL archives by default; allow CS-only as an option.
+
+1) Directory Layout (module only)
+discover/
+  README.md
+  __init__.py
+  db/
+    discover.sqlite                # auto-created
+  src/
+    schema.sql
+    views.sql
+    util.py
+    hn_fetch.py
+    arxiv_pwc_fetch.py
+    gh_enrich.py
+    embed_index.py
+    microtrends.py                 # builds embedding graph → micro-trends
+    run_once.py                    # CLI entry
+    tk_discover.py                 # Tkinter UI (Discover tab)
+
+2) CLI (on-demand)
+python discover/src/run_once.py --since 7d --embed-model all-MiniLM-L6-v2 --arxiv-mode all
+# flags:
+#   --since <Nd>          lookback window (e.g., 3d, 7d, 14d)
+#   --embed-model <name|none>  e.g., all-MiniLM-L6-v2 | BAAI/bge-small-en-v1.5 | none
+#   --arxiv-mode <all|cs-only> default: all
+#   --sources <hn,gh,arxiv>    optional subset; default: all
+
+3) Data Sources (fetch only when Run Now)
+
+Hacker News (Firebase):
+
+/v0/newstories.json to get IDs; /v0/item/<id>.json for items/comments.
+
+Store stories (title, url, by, time, score, descendants, domain) and top-level comments (first 10–20).
+
+Derive domain from URL (lowercase, strip www.).
+
+arXiv (ALL archives):
+
+Iterate prefixes: ["cs","math","physics","stat","eess","econ","q-bio","q-fin","astro-ph","cond-mat","nlin","quant-ph","math-ph","hep-ph","hep-th","hep-lat","gr-qc","nucl-ex","nucl-th"].
+
+Query Atom API sorted by submittedDate desc, pages of 200, stop when published < cutoff.
+
+Store arxiv_id, title, summary, categories, authors, published. UPSERT (avoid cross-prefix dupes).
+
+Papers With Code:
+
+For each arXiv paper, title-match → get GitHub repos → insert into pwc_links (arxiv_id, repo_full_name).
+
+GitHub:
+
+From HN story URLs and PWC repo links, collect repos.
+
+GET /repos/{owner}/{repo} → repos table.
+
+Build daily activity rows since cutoff: commits, issues_opened, prs_opened, releases, stars_delta → repo_activity.
+
+Use GITHUB_TOKEN if set; throttle if not.
+
+All fetchers must be idempotent (UPSERT by natural keys).
+
+4) Database Schema (chart-ready; single DB)
+
+discover/src/schema.sql must create:
+
+stories(id, title, url, domain, by, time, score, descendants, fetched_at)
+
+comments(id, parent, by, time, text, story_id)
+
+repos(full_name, url, description, stars, forks, watchers, open_issues, default_branch, last_release_at, updated_at)
+
+repo_activity(id, full_name, day, commits, issues_opened, prs_opened, releases, stars_delta)
+
+arxiv_papers(arxiv_id, title, summary, categories, published, authors)
+
+pwc_links(arxiv_id, repo_full_name)
+
+embeddings(obj_type, obj_id, dim, vector) (vectors as float32 BLOB; normalized)
+
+terms(term, obj_type, obj_id, weight)
+
+micro_trends(mt_id, window_start, window_end, label, size, score)
+
+micro_trend_members(mt_id, obj_type, obj_id)
+
+run_logs(id, started_at, finished_at, status, since_arg, embed_model, message)
+
+Note: micro_trends/micro_trend_members support the “interesting” charts; they’re built from embeddings.
+
+5) SQL Views (aggregated across sources)
+
+discover/src/views.sql must define:
+
+v_items (flattened items)
+
+CREATE VIEW IF NOT EXISTS v_items AS
+SELECT 'hn' AS source, 'story' AS obj_type, id AS obj_id,
+       title AS title_or_name, COALESCE(domain,'news.ycombinator.com') AS domain,
+       time AS ts_unix, COALESCE(score,0) AS metric_1, COALESCE(descendants,0) AS metric_2
+FROM stories
+UNION ALL
+SELECT 'arxiv','paper', arxiv_id, title, 'arxiv.org',
+       published, NULL, NULL
+FROM arxiv_papers
+UNION ALL
+SELECT 'github','repo', full_name, COALESCE(description, full_name), 'github.com',
+       updated_at, COALESCE(stars,0), COALESCE(forks,0)
+FROM repos;
+
+
+v_timeseries_term (term × day, all sources)
+
+CREATE VIEW IF NOT EXISTS v_timeseries_term AS
+WITH items AS (
+  SELECT obj_type, obj_id, datetime(ts_unix,'unixepoch') AS ts
+  FROM v_items
+)
+SELECT t.term, date(i.ts) AS day, COUNT(*) AS item_count
+FROM terms t
+JOIN items i ON t.obj_type = i.obj_type AND t.obj_id = i.obj_id
+GROUP BY t.term, day;
+
+
+v_domain_engagement (domain bubbles)
+
+CREATE VIEW IF NOT EXISTS v_domain_engagement AS
+SELECT domain,
+       COUNT(*) AS items,
+       SUM(COALESCE(metric_1,0)) AS metric1_sum,
+       SUM(COALESCE(metric_2,0)) AS metric2_sum
+FROM v_items
+GROUP BY domain;
+
+
+v_repo_activity_daily (GH daily)
+
+CREATE VIEW IF NOT EXISTS v_repo_activity_daily AS
+SELECT day, full_name, commits, issues_opened, prs_opened, releases, stars_delta
+FROM repo_activity;
+
+
+v_embeddings_meta (sanity)
+
+CREATE VIEW IF NOT EXISTS v_embeddings_meta AS
+SELECT obj_type, obj_id, dim, length(vector) AS bytes
+FROM embeddings;
+
+6) Embeddings & Micro-Trends
+
+Model: all-MiniLM-L6-v2 or BAAI/bge-small-en-v1.5 (≈384-dim, CPU-friendly).
+
+What to embed:
+
+HN: title (+ optional short top-comment snippet).
+
+arXiv: title + summary.
+
+GitHub: description (fallback to owner/repo if empty).
+
+Normalize vectors and store in embeddings. Also build a FAISS IndexFlatIP file under discover/ for speed (optional).
+
+Near-dup collapse: if cosine ≥ 0.90, treat as duplicate; keep earliest; merge terms/metrics.
+
+Micro-trend graph (rolling window = last 14 days):
+
+Build graph nodes = objects; edges for cosine ≥ 0.82.
+
+Components = micro-trends. Assign mt_id and write:
+
+micro_trends(mt_id, window_start, window_end, label, size, score)
+
+micro_trend_members(mt_id, obj_type, obj_id)
+
+Label micro-trends deterministically: extract top 2–3 n-grams from member texts (no LLM needed).
+
+Score (store in micro_trends.score):
+
+volume      = #members
+velocity    = EMA7(volume) / EMA14(volume)   -- clamp if EMA14=0
+engagement  = sum(HN score + log(1+comments) + GH(prs+issues+releases))
+freshness   = mean(exp(-age_days/7))
+score       = 0.35*norm(volume) + 0.25*norm(velocity)
+            + 0.25*norm(engagement) + 0.15*norm(freshness)
+
+7) Term Extraction (for charts)
+
+Deterministic, LLM-free:
+
+Lowercase, strip punctuation, remove stopwords.
+
+Unigrams/bigrams; rank by TF-IDF or frequency within the run window.
+
+Store top 2–3 per object: terms(term, obj_type, obj_id, weight).
+
+These power v_timeseries_term and most charts.
+
+8) Tkinter UI — New Discover Tab (with interesting charts)
+
+Create a Discover tab hosting a ttk.Notebook with four subtabs:
+
+A) Kickoff
+
+Inputs:
+
+Since (text, default 7d)
+
+Embed model (text/dropdown, default all-MiniLM-L6-v2, allow none)
+
+arXiv scope (dropdown: All Archives default; Computer Science Only)
+
+Run Now button launches run_once.py in a background thread; update a status label; upon completion refresh other tabs.
+
+B) Graphs (ALL AGGREGATED; avoid basic only line/bar)
+
+Implement at least four of these, with simple controls (term text box where relevant). Use matplotlib; keep it responsive.
+
+Momentum Heatmap (Term × Day)
+
+Data: v_timeseries_term for top 20 terms by total last 7 days.
+
+X = day, Y = term, Color = item_count.
+
+Purpose: instant “what’s heating up” view.
+
+Bubble Chart — Domains by Attention
+
+Data: v_domain_engagement.
+
+X = items (volume), Y = metric1_sum (engagement), Size = metric2_sum (secondary).
+
+Annotate the top ~10 bubbles.
+
+Stacked Area — Share of Voice (Top 5 Terms)
+
+Data: v_timeseries_term for last 30 days, normalize per day to shares across top 5 terms.
+
+Purpose: shifts in attention between leaders.
+
+Network Graph — Story/Paper/Repo Convergence
+
+Build edges: HN story ↔ GitHub repo (if URL contains repo), arXiv paper ↔ repo (from pwc_links).
+
+Force layout via networkx; node size by degree; color by node type.
+
+Purpose: reveal clusters where chatter, code, and research converge.
+
+Hexbin — Time vs Engagement
+
+Data: from v_items and/or GH daily activity.
+
+X = day index, Y = engagement (HN score or GH activity sum).
+
+Purpose: density over time without noisy scatter.
+
+(Codex can add treemap, chord, or Sankey if simple.)
+
+C) Items
+
+A ttk.Treeview table joining from v_items over the last N days (default 7), newest first, limit ~300 rows.
+
+Include a term filter (text box). When set, inner join terms to only show items tagged with that term.
+
+D) Logs
+
+ttk.Treeview of last 50 runs from run_logs: started_at, finished_at, status, since, embed_model, message.
+
+9) Run Sequence (what run_once.py does)
+
+ensure_schema() → ensure_views() in discover.sqlite (WAL on).
+
+Parse CLI flags; compute cutoff_unix.
+
+Fetch & UPSERT:
+
+HN stories/comments since cutoff
+
+arXiv papers (ALL or CS-only) since cutoff
+
+PWC repo links for inserted papers
+
+GitHub repos + daily activity for all discovered repos
+
+Embeddings:
+
+If --embed-model none: skip vectors, still extract terms.
+
+Else: embed texts, normalize, store in embeddings.
+
+Near-dup collapse (cosine ≥ 0.90) before terms; merge metrics.
+
+Micro-trends:
+
+Build 14-day similarity graph (cosine ≥ 0.82) → components → micro_trends/micro_trend_members.
+
+Compute score and simple label (top n-grams).
+
+Extract terms for all objects; store in terms.
+
+Insert a run_logs row with status ok|error and any message.
+
+Signal UI to refresh Graphs/Items/Logs.
+
+10) Performance & Rate Limits
+
+arXiv per prefix: page size 200; stop when published < cutoff; hard cap pages per prefix (e.g., 10).
+
+HN: only fetch item JSON for IDs with time >= cutoff; comments: first 10–20 top-level.
+
+GitHub: use token if available; otherwise throttle. Cache last seen updated_at to skip unchanged repos.
+
+Everything UTC; all timestamps stored as Unix seconds or YYYY-MM-DD for GH daily.
+
+11) Isolation Rules (must pass)
+
+All code, data, indexes, logs under discover/.
+
+Only add a single Discover tab to the main Tkinter notebook; do not alter other tabs.
+
+No reads/writes to other app DBs.
+
+No hidden cross-imports creating coupling.
+
+12) Acceptance Checklist
+
+Running the CLI produces/updates discover/db/discover.sqlite.
+
+Views return data; all graphs are aggregated across sources.
+
+At least four interesting charts are implemented (heatmap, bubble, stacked area, network, hexbin).
+
+The UI remains responsive during fetch (threaded).
+
+Re-runs are idempotent (no dupes; UPSERTs).
+
+--arxiv-mode all pulls non-AI fields (e.g., physics/econ) visible in Items and terms.
+
+Embeddings present (v_embeddings_meta returns rows) unless --embed-model none.
+
+13) Minimal Helper Contracts (Codex can implement internals)
+
+util.py: get_db(), ensure_schema(), ensure_views(), log_run()
+
+hn_fetch.py: fetch_and_upsert(db, since_unix)
+
+arxiv_pwc_fetch.py: fetch_and_upsert(db, since_unix, category_mode='all')
+
+gh_enrich.py: enrich_from_links(db, since_unix)
+
+embed_index.py: build(db, model_name) (vectors + terms; normalize; dedupe support)
+
+microtrends.py: build_components(db, window_days=14, sim_threshold=0.82)
+
+tk_discover.py: DiscoverUI(ttk.Frame) with Kickoff / Graphs / Items / Logs

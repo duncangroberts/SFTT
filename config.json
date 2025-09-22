@@ -1,0 +1,95 @@
+{
+  "timezone": "Europe/London",
+  "sources": [
+    "reuters.com",
+    "apnews.com",
+    "afp.com",
+    "nytimes.com",
+    "washingtonpost.com",
+    "theguardian.com",
+    "bbc.co.uk",
+    "npr.org",
+    "bloomberg.com",
+    "cnbc.com",
+    "forbes.com",
+    "businessinsider.com",
+    "techcrunch.com",
+    "wired.com",
+    "arstechnica.com",
+    "theverge.com",
+    "venturebeat.com"
+  ],
+  "technologies": [
+    {
+      "id": "genai",
+      "name": "Generative AI",
+      "patterns": [
+        "generative ai",
+        "openai",
+        "chatgpt",
+        "ai agent",
+        "anthropic",
+        "agentification",
+        "gpt",
+        "LLM",
+        "multimodality"
+      ]
+    },
+    {
+      "id": "xr",
+      "name": "Extended Reality (XR)",
+      "patterns": [
+        "extended reality",
+        "xr",
+        "virtual reality",
+        "vr",
+        "augmented reality",
+        "mixed reality",
+        "metaverse"
+      ]
+    },
+    {
+      "id": "quantum",
+      "name": "Quantum Computing",
+      "patterns": [
+        "quantum computing",
+        "quantum supremacy",
+        "qubit"
+      ]
+    },
+    {
+      "id": "Blockchain",
+      "name": "Blockchain",
+      "patterns": [
+        "blockchain",
+        "decentralisation",
+        "crypto",
+        "cryptocurrency",
+        "NFT"
+      ]
+    },
+    {
+      "id": "Greentech",
+      "name": "Green Tech",
+      "patterns": [
+        "sustainability",
+        "climate change"
+      ]
+    },
+    {
+      "id": "Space",
+      "name": "Space Technology",
+      "patterns": [
+        "spacex",
+        "nasa",
+        "satellite"
+      ]
+    }
+  ],
+  "weights": {
+    "base_g": 0.7,
+    "base_h": 0.3,
+    "k_shrink": 200,
+    "k_weight": 200
+  }
+}

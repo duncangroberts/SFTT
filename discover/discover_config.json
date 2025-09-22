@@ -1,0 +1,8 @@
+{
+    "comment_weight": 0.6,
+    "sim_threshold": 0.78,
+    "stale_decay_factor": 0.9,
+    "sentiment_weight": 0.5,
+    "merge_threshold": 0.9,
+    "split_threshold": 0.2
+}
