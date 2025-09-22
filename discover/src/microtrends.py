@@ -488,400 +488,420 @@ def _calculate_theme_similarity(conn, trend_id1: int, trend_id2: int) -> float:
     return dot_product / (norm_c1 * norm_c2)
 
 
-    def _get_llm_label_for_cluster(self, cluster_data: list[dict]) -> tuple[str | None, str | None]:
-        titles = [item["title"] for item in cluster_data if "title" in item]
+class Microtrends:
+    def __init__(self, db_path: str, llm_client: Any | None = None) -> None:
+        self.db_path = db_path
+        self.llm_client = llm_client
+
+    def _get_llm_label_for_cluster(self, cluster_data: list[dict[str, Any]]) -> tuple[str | None, str | None]:
+        if not self.llm_client:
+            return None, None
+
+        titles = []
+        for item in cluster_data:
+            title = item.get('title')
+            if title:
+                titles.append(title)
         if not titles:
             return None, None
 
-        prompt = "Summarize the following titles into a concise, single-phrase label and a brief summary:\n\n" + "\n".join(titles)
-        system_prompt = "You are a helpful assistant that summarizes topics into concise labels and summaries. Respond with only the label on the first line and the summary on the second line, no extra commentary."
+        prompt = (
+            'Summarize the following titles into a concise, single-phrase label and a brief summary\n\n'
+            + '\n'.join(titles)
+        )
+        system_prompt = (
+            'You are a helpful assistant that summarizes topics into concise labels and summaries. ' 
+            'Respond with only the label on the first line and the summary on the second line, no extra commentary.'
+        )
 
         try:
             response = self.llm_client.generate(
                 prompt,
                 system_prompt=system_prompt,
                 temperature=0.1,
-                max_tokens=100, # Increased max_tokens for summary
-                stop=["\n\n"] # Stop after two newlines to get label and summary
+                max_tokens=100,
+                stop=['\n\n'],
             )
-            lines = response.strip().split('\n', 1)
-            label = lines[0].strip() if lines else None
-            summary = lines[1].strip() if len(lines) > 1 else None
-            return label, summary
-        except Exception as e:
-            print(f"Error generating LLM label: {e}")
+        except Exception as exc:  # pragma: no cover - depends on runtime LLM
+            LOGGER.exception('Error generating LLM label: %s', exc)
             return None, None
 
-def build_components(
-    conn,
-    run_id: int,
-    cutoff_unix: int,
-    *,
-    window_days: int = 30,
-    progress_cb: Callable[[str], None] | None = None,
-) -> dict[str, int]:
-    config = load_config()
-    comment_weight = config.get('comment_weight', 0.6)
-    sim_threshold = config.get('sim_threshold', 0.78)
-    stale_decay_factor = config.get('stale_decay_factor', 0.9)
-    sentiment_weight = config.get('sentiment_weight', 0.5)
-    use_llm_labels = True
+        lines = response.strip().split('\n', 1)
+        label = lines[0].strip() if lines else None
+        summary = lines[1].strip() if len(lines) > 1 else None
+        return label, summary
 
-    if progress_cb:
-        progress_cb(f'build_components called with use_llm_labels={use_llm_labels}')
+    def build_components(
+        self,
+        conn,
+        run_id: int,
+        cutoff_unix: int,
+        *,
+        window_days: int = 30,
+        progress_cb: Callable[[str], None] | None = None,
+    ) -> dict[str, int]:
+        config = load_config()
+        comment_weight = config.get('comment_weight', 0.6)
+        sim_threshold = config.get('sim_threshold', 0.78)
+        stale_decay_factor = config.get('stale_decay_factor', 0.9)
+        sentiment_weight = config.get('sentiment_weight', 0.5)
+        use_llm_labels = bool(self.llm_client)
     
-    if progress_cb:
-        progress_cb("Loading embeddings...")
-    items = _load_embeddings(conn, cutoff_unix, window_days, comment_weight, sentiment_weight)
-    if not items:
-        LOGGER.info("No embeddings available for trend detection; run the embedding stage first")
         if progress_cb:
-            progress_cb("No embeddings available for trend detection; run the embedding stage first")
-        return {'trends': 0, 'new_trends': 0, 'updated_trends': 0}
-
-    if util.is_cancelled():
-        raise util.CancelledError('Cancelled before micro-trend build')
-
-    if progress_cb:
-        progress_cb(f"Building clusters with threshold={sim_threshold}...")
-    clusters = _build_clusters(items, sim_threshold)
-    if progress_cb:
-        progress_cb(f"Found {len(clusters)} clusters.")
-
-    # Create trend clusters in the database
-    for cluster in clusters:
-        if len(cluster.members) < 2:
-            continue
+            progress_cb(f'build_components called with use_llm_labels={use_llm_labels}')
         
-        with conn:
-            cur = conn.execute("INSERT INTO trend_clusters (active) VALUES (1)")
-            trend_id = int(cur.lastrowid)
-            member_keys = {f"story:{items[idx]['obj_id']}" for idx in cluster.members}
-            _ensure_cluster_members_table(conn, trend_id, member_keys, datetime.now(timezone.utc).date().isoformat())
-
-    # Merge similar clusters
-    merge_threshold = config.get('merge_threshold', 0.9)
-    trends = conn.execute("SELECT trend_id FROM trend_clusters WHERE active = 1").fetchall()
-    trend_ids = [t['trend_id'] for t in trends]
-    merged_trends = set()
-    for i in range(len(trend_ids)):
-        if i in merged_trends:
-            continue
-        for j in range(i + 1, len(trend_ids)):
-            if j in merged_trends:
+        if progress_cb:
+            progress_cb("Loading embeddings...")
+        items = _load_embeddings(conn, cutoff_unix, window_days, comment_weight, sentiment_weight)
+        if not items:
+            LOGGER.info("No embeddings available for trend detection; run the embedding stage first")
+            if progress_cb:
+                progress_cb("No embeddings available for trend detection; run the embedding stage first")
+            return {'trends': 0, 'new_trends': 0, 'updated_trends': 0}
+    
+        if util.is_cancelled():
+            raise util.CancelledError('Cancelled before micro-trend build')
+    
+        if progress_cb:
+            progress_cb(f"Building clusters with threshold={sim_threshold}...")
+        clusters = _build_clusters(items, sim_threshold)
+        if progress_cb:
+            progress_cb(f"Found {len(clusters)} clusters.")
+    
+        # Create trend clusters in the database
+        for cluster in clusters:
+            if len(cluster.members) < 2:
                 continue
             
-            t1_id = trend_ids[i]
-            t2_id = trend_ids[j]
-
-            similarity = _calculate_theme_similarity(conn, t1_id, t2_id)
-            if similarity > merge_threshold:
-                if progress_cb:
-                    progress_cb(f"Merging clusters {t1_id} and {t2_id} with similarity {similarity:.2f}")
-                new_trend_id = _merge_themes(conn, t1_id, t2_id)
-                merged_trends.add(i)
-                merged_trends.add(j)
-                trend_ids.append(new_trend_id) # Add the new cluster to the list
-                break # Move to the next cluster
-
-    # Split broad themes
-    split_threshold = config.get('split_threshold', 0.2)
-    trends = conn.execute("SELECT trend_id FROM trend_clusters WHERE active = 1").fetchall()
-    trend_ids = [t['trend_id'] for t in trends]
-    split_themes = set()
-    newly_created_themes = []
-    for i, trend_id in enumerate(trend_ids):
-        if i in split_themes:
-            continue
-        
-        variance = _calculate_cluster_variance(conn, trend_id)
-        if variance > split_threshold:
-            if progress_cb:
-                progress_cb(f"Splitting theme {trend_id} with variance {variance:.2f}")
-            new_trend_ids = _split_theme(conn, trend_id, sim_threshold)
-            split_themes.add(i)
-            newly_created_themes.extend(new_trend_ids)
-
-    term_map = _load_terms(conn)
-    now = util.epoch_now()
-    today = datetime.now(timezone.utc).date().isoformat()
-    window_weeks = max(window_days / 7.0, 1.0)
-
-    # Get active clusters from the database
-    clusters = conn.execute("SELECT trend_id FROM trend_clusters WHERE active = 1").fetchall()
-
-    cluster_rows = conn.execute(
-        "SELECT * FROM trend_clusters"
-    ).fetchall()
-    cluster_meta = {row['trend_id']: dict(row) for row in cluster_rows}
-    existing_by_fp = {row['fingerprint']: dict(row) for row in cluster_rows if row['fingerprint']}
-
-    existing_member_sets: dict[int, set[str]] = {}
-    for row in conn.execute(
-        "SELECT trend_id, obj_type, obj_id FROM trend_cluster_members"
-    ):
-        existing_member_sets.setdefault(row['trend_id'], set()).add(f"{row['obj_type']}:{row['obj_id']}")
-
-    matched_cluster_ids: set[int] = set()
-    new_trends = 0
-    updated_trends = 0
-
-    util.ensure_views(conn)
-    processed_clusters = 0
-
-    for i, cluster_row in enumerate(clusters):
-        trend_id = cluster_row['trend_id']
-        if progress_cb:
-            progress_cb(f"Processing cluster {i+1}/{len(clusters)}...")
-        if util.is_cancelled():
-            raise util.CancelledError('Cancelled during trend synthesis')
-        
-        # Get cluster members
-        members = conn.execute("SELECT obj_id FROM trend_cluster_members WHERE trend_id = ?", (trend_id,)).fetchall()
-        member_ids = [m['obj_id'] for m in members]
-        cluster_items = [item for item in items if item['obj_id'] in member_ids]
-        if len(cluster_items) < 2:
-            continue
-
-        member_keys = {f"story:{item['obj_id']}" for item in cluster_items}
-        keywords, label, sample_titles = _top_terms_for_cluster(cluster_items, items, term_map)
-        fingerprint = _fingerprint(keywords, [item['obj_id'] for item in cluster_items])
-
-        llm_label = None
-        llm_summary = None
-        if use_llm_labels:
-            llm_label, llm_summary = self._get_llm_label_for_cluster(cluster_items)
-            if llm_label:
-                label = llm_label # Use LLM label if available
-
-
-        signal_total = 0.0
-        comment_total = 0.0
-        sentiment_total = 0.0
-        timestamps: list[int] = []
-        for idx in cluster.members:
-            item = items[idx]
-            weight = _signal_weight(now, item['ts_unix'], window_days)
-            base_signal = item['score'] + 0.6 * item['comments'] + 1.0 + item['sentiment'] * 0.5
-            signal_total += base_signal * weight
-            comment_total += item['comments']
-            sentiment_total += item['sentiment']
-            timestamps.append(item['ts_unix'])
-
-        if not timestamps:
-            continue
-
-        average_sentiment = sentiment_total / len(cluster.members) if cluster.members else 0.0
-
-        window_start = datetime.fromtimestamp(min(timestamps), tz=timezone.utc).date().isoformat()
-        window_end = datetime.fromtimestamp(max(timestamps), tz=timezone.utc).date().isoformat()
-        story_count = len(cluster.members)
-
-        matched_row = existing_by_fp.get(fingerprint)
-        trend_id: int | None = None
-
-        if matched_row:
-            trend_id = matched_row['trend_id']
-        else:
-            best_trend_id = None
-            best_overlap = 0.0
-            for candidate_id, existing_keys in existing_member_sets.items():
-                overlap = len(member_keys & existing_keys)
-                if not overlap:
-                    continue
-                union = len(member_keys | existing_keys)
-                jaccard = overlap / union if union else 0.0
-                if jaccard > best_overlap and jaccard >= 0.35:
-                    best_overlap = jaccard
-                    best_trend_id = candidate_id
-            if best_trend_id is not None:
-                trend_id = best_trend_id
-
-        centroid_blob = cluster.centroid.astype(np.float32).tobytes()
-        canonical_terms = ','.join(keywords)
-        signal_delta = signal_total
-        novelty = 1.0
-        persistence = min(1.0, 1.0 / window_weeks)
-        times_seen = 1
-
-        if trend_id is None:
-            new_trends += 1
             with conn:
-                cur = conn.execute(
-                    """
-                    INSERT INTO trend_clusters (
-                        fingerprint,
-                        canonical_label,
-                        llm_summary,
-                        canonical_terms,
-                        first_seen,
-                        last_seen,
-                        times_seen,
-                        latest_signal,
-                        latest_delta,
-                        latest_story_count,
-                        latest_comment_count,
-                        latest_sentiment,
-                        novelty,
-                        persistence,
-                        centroid,
-                        active
-                    ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-                    """,
-                    (
-                        fingerprint,
-                        label,
-                        llm_summary,
-                        canonical_terms,
-                        today,
-                        today,
-                        signal_total,
-                        signal_delta,
-                        story_count,
-                        int(comment_total),
-                        average_sentiment,
-                        novelty,
-                        persistence,
-                        centroid_blob,
-                    ),
-                )
+                cur = conn.execute("INSERT INTO trend_clusters (active) VALUES (1)")
                 trend_id = int(cur.lastrowid)
-            cluster_meta[trend_id] = {
-                'trend_id': trend_id,
-                'fingerprint': fingerprint,
-                'canonical_label': label,
-                'llm_summary': llm_summary,
-                'canonical_terms': canonical_terms,
-                'first_seen': today,
-                'last_seen': today,
-                'times_seen': 1,
-                'latest_signal': signal_total,
-                'latest_delta': signal_delta,
-                'latest_story_count': story_count,
-                'latest_comment_count': int(comment_total),
-                'latest_sentiment': average_sentiment,
-                'novelty': novelty,
-                'persistence': persistence,
-                'centroid': centroid_blob,
-                'active': 1,
-            }
-            existing_by_fp[fingerprint] = cluster_meta[trend_id]
-        else:
-            processed_clusters += 1
-            matched_cluster_ids.add(trend_id)
-            meta = cluster_meta.get(trend_id, {})
-            previous_signal = float(meta.get('latest_signal') or 0.0)
-            times_seen = int(meta.get('times_seen') or 0) + 1
-            novelty = max(0.2, 1.0 / times_seen)
-            persistence = min(1.0, times_seen / window_weeks)
-            signal_delta = signal_total - previous_signal
-            signal_total += (average_sentiment - previous_sentiment) * sentiment_weight
+                member_keys = {f"story:{items[idx]['obj_id']}" for idx in cluster.members}
+                _ensure_cluster_members_table(conn, trend_id, member_keys, datetime.now(timezone.utc).date().isoformat())
+    
+        # Merge similar clusters
+        merge_threshold = config.get('merge_threshold', 0.9)
+        trends = conn.execute("SELECT trend_id FROM trend_clusters WHERE active = 1").fetchall()
+        trend_ids = [t['trend_id'] for t in trends]
+        merged_trends = set()
+        for i in range(len(trend_ids)):
+            if i in merged_trends:
+                continue
+            for j in range(i + 1, len(trend_ids)):
+                if j in merged_trends:
+                    continue
+                
+                t1_id = trend_ids[i]
+                t2_id = trend_ids[j]
+    
+                similarity = _calculate_theme_similarity(conn, t1_id, t2_id)
+                if similarity > merge_threshold:
+                    if progress_cb:
+                        progress_cb(f"Merging clusters {t1_id} and {t2_id} with similarity {similarity:.2f}")
+                    new_trend_id = _merge_themes(conn, t1_id, t2_id)
+                    merged_trends.add(i)
+                    merged_trends.add(j)
+                    trend_ids.append(new_trend_id) # Add the new cluster to the list
+                    break # Move to the next cluster
+    
+        # Split broad themes
+        split_threshold = config.get('split_threshold', 0.2)
+        trends = conn.execute("SELECT trend_id FROM trend_clusters WHERE active = 1").fetchall()
+        trend_ids = [t['trend_id'] for t in trends]
+        split_themes = set()
+        newly_created_themes = []
+        for i, trend_id in enumerate(trend_ids):
+            if i in split_themes:
+                continue
+            
+            variance = _calculate_cluster_variance(conn, trend_id)
+            if variance > split_threshold:
+                if progress_cb:
+                    progress_cb(f"Splitting theme {trend_id} with variance {variance:.2f}")
+                new_trend_ids = _split_theme(conn, trend_id, sim_threshold)
+                split_themes.add(i)
+                newly_created_themes.extend(new_trend_ids)
+    
+        term_map = _load_terms(conn)
+        now = util.epoch_now()
+        today = datetime.now(timezone.utc).date().isoformat()
+        window_weeks = max(window_days / 7.0, 1.0)
+    
+        # Get active clusters from the database
+        clusters = conn.execute("SELECT trend_id FROM trend_clusters WHERE active = 1").fetchall()
+    
+        cluster_rows = conn.execute(
+            "SELECT * FROM trend_clusters"
+        ).fetchall()
+        cluster_meta = {row['trend_id']: dict(row) for row in cluster_rows}
+        existing_by_fp = {row['fingerprint']: dict(row) for row in cluster_rows if row['fingerprint']}
+    
+        existing_member_sets: dict[int, set[str]] = {}
+        for row in conn.execute(
+            "SELECT trend_id, obj_type, obj_id FROM trend_cluster_members"
+        ):
+            existing_member_sets.setdefault(row['trend_id'], set()).add(f"{row['obj_type']}:{row['obj_id']}")
+    
+        matched_cluster_ids: set[int] = set()
+        new_trends = 0
+        updated_trends = 0
+    
+        util.ensure_views(conn)
+        processed_clusters = 0
+    
+        for i, cluster_row in enumerate(clusters):
+            trend_id = cluster_row['trend_id']
+            if progress_cb:
+                progress_cb(f"Processing cluster {i+1}/{len(clusters)}...")
+            if util.is_cancelled():
+                raise util.CancelledError('Cancelled during trend synthesis')
+            
+            # Get cluster members
+            members = conn.execute("SELECT obj_id FROM trend_cluster_members WHERE trend_id = ?", (trend_id,)).fetchall()
+            member_ids = [m['obj_id'] for m in members]
+            cluster_items = [item for item in items if item['obj_id'] in member_ids]
+            if len(cluster_items) < 2:
+                continue
+    
+            member_keys = {f"story:{item['obj_id']}" for item in cluster_items}
+            keywords, label, sample_titles = _top_terms_for_cluster(cluster_items, items, term_map)
+            fingerprint = _fingerprint(keywords, [item['obj_id'] for item in cluster_items])
+    
+            llm_label = None
+            llm_summary = None
+            if use_llm_labels:
+                llm_label, llm_summary = self._get_llm_label_for_cluster(cluster_items)
+                if llm_label:
+                    label = llm_label # Use LLM label if available
+    
+    
+            signal_total = 0.0
+            comment_total = 0.0
+            sentiment_total = 0.0
+            timestamps: list[int] = []
+            for idx in cluster.members:
+                item = items[idx]
+                weight = _signal_weight(now, item['ts_unix'], window_days)
+                base_signal = item['score'] + 0.6 * item['comments'] + 1.0 + item['sentiment'] * 0.5
+                signal_total += base_signal * weight
+                comment_total += item['comments']
+                sentiment_total += item['sentiment']
+                timestamps.append(item['ts_unix'])
+    
+            if not timestamps:
+                continue
+    
+            average_sentiment = sentiment_total / len(cluster.members) if cluster.members else 0.0
+    
+            window_start = datetime.fromtimestamp(min(timestamps), tz=timezone.utc).date().isoformat()
+            window_end = datetime.fromtimestamp(max(timestamps), tz=timezone.utc).date().isoformat()
+            story_count = len(cluster.members)
+    
+            matched_row = existing_by_fp.get(fingerprint)
+            trend_id: int | None = None
+    
+            if matched_row:
+                trend_id = matched_row['trend_id']
+            else:
+                best_trend_id = None
+                best_overlap = 0.0
+                for candidate_id, existing_keys in existing_member_sets.items():
+                    overlap = len(member_keys & existing_keys)
+                    if not overlap:
+                        continue
+                    union = len(member_keys | existing_keys)
+                    jaccard = overlap / union if union else 0.0
+                    if jaccard > best_overlap and jaccard >= 0.35:
+                        best_overlap = jaccard
+                        best_trend_id = candidate_id
+                if best_trend_id is not None:
+                    trend_id = best_trend_id
+    
+            centroid_blob = cluster.centroid.astype(np.float32).tobytes()
+            canonical_terms = ','.join(keywords)
+            signal_delta = signal_total
+            novelty = 1.0
+            persistence = min(1.0, 1.0 / window_weeks)
+            times_seen = 1
+    
+            if trend_id is None:
+                new_trends += 1
+                with conn:
+                    cur = conn.execute(
+                        """
+                        INSERT INTO trend_clusters (
+                            fingerprint,
+                            canonical_label,
+                            llm_summary,
+                            canonical_terms,
+                            first_seen,
+                            last_seen,
+                            times_seen,
+                            latest_signal,
+                            latest_delta,
+                            latest_story_count,
+                            latest_comment_count,
+                            latest_sentiment,
+                            novelty,
+                            persistence,
+                            centroid,
+                            active
+                        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                        """,
+                        (
+                            fingerprint,
+                            label,
+                            llm_summary,
+                            canonical_terms,
+                            today,
+                            today,
+                            signal_total,
+                            signal_delta,
+                            story_count,
+                            int(comment_total),
+                            average_sentiment,
+                            novelty,
+                            persistence,
+                            centroid_blob,
+                        ),
+                    )
+                    trend_id = int(cur.lastrowid)
+                cluster_meta[trend_id] = {
+                    'trend_id': trend_id,
+                    'fingerprint': fingerprint,
+                    'canonical_label': label,
+                    'llm_summary': llm_summary,
+                    'canonical_terms': canonical_terms,
+                    'first_seen': today,
+                    'last_seen': today,
+                    'times_seen': 1,
+                    'latest_signal': signal_total,
+                    'latest_delta': signal_delta,
+                    'latest_story_count': story_count,
+                    'latest_comment_count': int(comment_total),
+                    'latest_sentiment': average_sentiment,
+                    'novelty': novelty,
+                    'persistence': persistence,
+                    'centroid': centroid_blob,
+                    'active': 1,
+                }
+                existing_by_fp[fingerprint] = cluster_meta[trend_id]
+            else:
+                processed_clusters += 1
+                matched_cluster_ids.add(trend_id)
+                meta = cluster_meta.get(trend_id, {})
+                previous_signal = float(meta.get('latest_signal') or 0.0)
+                times_seen = int(meta.get('times_seen') or 0) + 1
+                novelty = max(0.2, 1.0 / times_seen)
+                persistence = min(1.0, times_seen / window_weeks)
+                signal_delta = signal_total - previous_signal
+                signal_total += (average_sentiment - previous_sentiment) * sentiment_weight
+                with conn:
+                    conn.execute(
+                        """
+                        UPDATE trend_clusters
+                        SET fingerprint = ?,
+                            canonical_label = ?,
+                            llm_summary = ?,
+                            canonical_terms = ?,
+                            last_seen = ?,
+                            times_seen = ?,
+                            latest_signal = ?,
+                            latest_delta = ?,
+                            latest_story_count = ?,
+                            latest_comment_count = ?,
+                            latest_sentiment = ?,
+                            novelty = ?,
+                            persistence = ?,
+                            centroid = ?,
+                            active = 1
+                        WHERE trend_id = ?
+                        """,
+                        (
+                            fingerprint,
+                            label,
+                            llm_summary,
+                            canonical_terms,
+                            today,
+                            times_seen,
+                            signal_total,
+                            signal_delta,
+                            story_count,
+                            int(comment_total),
+                            average_sentiment,
+                            novelty,
+                            persistence,
+                            centroid_blob,
+                            trend_id,
+                        ),
+                    )
+                meta.update(
+                    fingerprint=fingerprint,
+                    canonical_label=label,
+                    llm_summary=llm_summary,
+                    canonical_terms=canonical_terms,
+                    last_seen=today,
+                    times_seen=times_seen,
+                    latest_signal=signal_total,
+                    latest_delta=signal_delta,
+                    latest_story_count=story_count,
+                    latest_comment_count=int(comment_total),
+                    latest_sentiment=average_sentiment,
+                    novelty=novelty,
+                    persistence=persistence,
+                    centroid=centroid_blob,
+                    active=1,
+                )
+                existing_by_fp[fingerprint] = meta
+                cluster_meta[trend_id] = meta
+                updated_trends += 1
+    
+            _ensure_cluster_members_table(conn, trend_id, member_keys, today)
+    
             with conn:
                 conn.execute(
                     """
-                    UPDATE trend_clusters
-                    SET fingerprint = ?,
-                        canonical_label = ?,
-                        llm_summary = ?,
-                        canonical_terms = ?,
-                        last_seen = ?,
-                        times_seen = ?,
-                        latest_signal = ?,
-                        latest_delta = ?,
-                        latest_story_count = ?,
-                        latest_comment_count = ?,
-                        latest_sentiment = ?,
-                        novelty = ?,
-                        persistence = ?,
-                        centroid = ?,
-                        active = 1
-                    WHERE trend_id = ?
+                    INSERT INTO trend_snapshots (
+                        trend_id, run_id, window_start, window_end, story_count, comment_count, signal, delta, novelty, persistence
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        fingerprint,
-                        label,
-                        llm_summary,
-                        canonical_terms,
-                        today,
-                        times_seen,
-                        signal_total,
-                        signal_delta,
+                        trend_id,
+                        run_id,
+                        window_start,
+                        window_end,
                         story_count,
                         int(comment_total),
-                        average_sentiment,
+                        signal_total,
+                        signal_delta,
                         novelty,
                         persistence,
-                        centroid_blob,
-                        trend_id,
                     ),
                 )
-            meta.update(
-                fingerprint=fingerprint,
-                canonical_label=label,
-                llm_summary=llm_summary,
-                canonical_terms=canonical_terms,
-                last_seen=today,
-                times_seen=times_seen,
-                latest_signal=signal_total,
-                latest_delta=signal_delta,
-                latest_story_count=story_count,
-                latest_comment_count=int(comment_total),
-                latest_sentiment=average_sentiment,
-                novelty=novelty,
-                persistence=persistence,
-                centroid=centroid_blob,
-                active=1,
-            )
-            existing_by_fp[fingerprint] = meta
-            cluster_meta[trend_id] = meta
-            updated_trends += 1
-
-        _ensure_cluster_members_table(conn, trend_id, member_keys, today)
-
-        with conn:
-            conn.execute(
-                """
-                INSERT INTO trend_snapshots (
-                    trend_id, run_id, window_start, window_end, story_count, comment_count, signal, delta, novelty, persistence
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    trend_id,
-                    run_id,
-                    window_start,
-                    window_end,
-                    story_count,
-                    int(comment_total),
-                    signal_total,
-                    signal_delta,
-                    novelty,
-                    persistence,
-                ),
-            )
-
-        matched_cluster_ids.add(trend_id)
-
-    stale_ids = set(cluster_meta.keys()) - matched_cluster_ids
-    if stale_ids:
-        updates = []
-        for trend_id in stale_ids:
-            meta = cluster_meta.get(trend_id, {})
-            previous_signal = float(meta.get('latest_signal') or 0.0)
-            decayed_signal = previous_signal * stale_decay_factor
-            updates.append((decayed_signal, trend_id))
-
-        with conn:
-            conn.executemany(
-                "UPDATE trend_clusters SET active = 0, latest_signal = ? WHERE trend_id = ?",
-                updates,
-            )
-
-    _calculate_term_surges(conn, run_id, cutoff_unix, window_days, progress_cb=progress_cb)
-
-    _store_trend_history(conn, run_id)
-
-    return {
-        'trends': processed_clusters,
-        'new_trends': new_trends,
-        'updated_trends': updated_trends,
-    }
+    
+            matched_cluster_ids.add(trend_id)
+    
+        stale_ids = set(cluster_meta.keys()) - matched_cluster_ids
+        if stale_ids:
+            updates = []
+            for trend_id in stale_ids:
+                meta = cluster_meta.get(trend_id, {})
+                previous_signal = float(meta.get('latest_signal') or 0.0)
+                decayed_signal = previous_signal * stale_decay_factor
+                updates.append((decayed_signal, trend_id))
+    
+            with conn:
+                conn.executemany(
+                    "UPDATE trend_clusters SET active = 0, latest_signal = ? WHERE trend_id = ?",
+                    updates,
+                )
+    
+        _calculate_term_surges(conn, run_id, cutoff_unix, window_days, progress_cb=progress_cb)
+    
+        _store_trend_history(conn, run_id)
+    
+        return {
+            'trends': processed_clusters,
+            'new_trends': new_trends,
+            'updated_trends': updated_trends,
+        }
