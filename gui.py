@@ -14,7 +14,8 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import pandas as pd
 import discovery_llm
-from discover.src.tk_discover import DiscoverUI
+from discover.src.discover_gui import DiscoverTab
+from discover.src.charts_gui import ChartsTab
 from quadrant_view import QuadrantView
 from llm_client import LlamaCppClient, LLMClientError
 
@@ -86,6 +87,7 @@ class App(tk.Tk):
         self.create_trajectories_view()
         self.create_trends_view()
         self.create_discovery_view()
+        self.create_discover_charts_view()
         self.create_trend_quadrant_view()
 
         # Log startup environment details after UI is ready
@@ -1372,14 +1374,9 @@ class App(tk.Tk):
     def create_discovery_view(self):
         discovery_frame = ttk.Frame(self.notebook)
         self.notebook.add(discovery_frame, text="Discover")
-        self.discovery_status_var = tk.StringVar(value="Idle")
-        self.discovery_summary_var = tk.StringVar(
-            value="Use the Discover tab controls to run the pipeline."
-        )
-        self.discovery_tree = None
-        self.discovery_text = None
         try:
-            self.discover_ui = DiscoverUI(discovery_frame)
+            discover_tab = DiscoverTab(discovery_frame, self)
+            discover_tab.pack(fill="both", expand=True)
         except Exception as exc:
             fallback = ttk.Frame(discovery_frame)
             fallback.pack(fill="both", expand=True, padx=20, pady=20)
@@ -1665,7 +1662,7 @@ class App(tk.Tk):
         self._save_figure_png(self.fig, f"quadrant_{safe_month}.png")
 
     def export_comment_png(self):
-        month = (self.comment_month_combo.get() or "").strip()
+        month = (self.comment_month_combo.get() or '').strip()
         if not month:
             messagebox.showerror("Error", "Please select a month.")
             return
@@ -1744,3 +1741,12 @@ class App(tk.Tk):
         if file_path:
             df.to_json(file_path, orient="records")
             messagebox.showinfo("Success", f"Data saved to {file_path}")
+
+    def create_discover_charts_view(self):
+        charts_frame = ttk.Frame(self.notebook)
+        self.notebook.add(charts_frame, text="Discover Charts")
+        try:
+            charts_tab = ChartsTab(charts_frame, self)
+            charts_tab.pack(fill="both", expand=True)
+        except Exception as e:
+            ttk.Label(charts_frame, text=f"Error loading Discover Charts: {e}").pack(pady=20, padx=20)

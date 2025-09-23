@@ -48,6 +48,7 @@ class LlamaServerManager:
         extra_args: Optional[Iterable[str]] = None,
         ready_timeout: float = 60.0,
         poll_interval: float = 0.75,
+        logger: Optional[Callable[[str], None]] = None,
     ) -> None:
         self.client = client or LlamaCppClient()
         raw_base = base_url or self.client.base_url
@@ -57,6 +58,7 @@ class LlamaServerManager:
         self.port = parsed.port or 8080
         self.ready_timeout = ready_timeout
         self.poll_interval = poll_interval
+        self.logger = logger
 
         self.exe_path = exe_path or self._default_exe_path()
         self.model_path = model_path or self._default_model_path()
@@ -117,6 +119,9 @@ class LlamaServerManager:
         cmd = [str(self.exe_path), "--model", str(self.model_path), "--host", self.host, "--port", str(self.port)]
         cmd.extend(self.extra_args)
 
+        if logger:
+            logger(f"LLM discovery: executing command: {' '.join(cmd)}")
+
         creationflags = 0
         startupinfo = None
         if sys.platform == "win32":
@@ -141,6 +146,8 @@ class LlamaServerManager:
     def _wait_until_ready(self, logger: Optional[Callable[[str], None]]) -> None:
         deadline = time.monotonic() + self.ready_timeout
         while time.monotonic() < deadline:
+            if self.logger:
+                self.logger(f"LLM discovery: checking for server at {self.base_url}/health")
             if self._proc and self._proc.poll() is not None:
                 stdout, stderr = self._proc.communicate(timeout=0.1)
                 raise LlamaServerError(
@@ -174,10 +181,15 @@ class LlamaServerManager:
         model_dir = Path("models")
         if not model_dir.exists():
             raise LlamaServerError("models directory not found; cannot locate GGUF model")
-        candidates = sorted(model_dir.glob("*.gguf"))
+        
+        candidates = [f for f in os.listdir(model_dir) if f.endswith('.gguf')]
         if not candidates:
-            raise LlamaServerError("No GGUF model files found in models directory")
-        return candidates[0]
+            raise LlamaServerError(
+                "No GGUF model files found in models directory. "
+                "Download a model such as TinyLlama-1.1B from "
+                "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF"
+            )
+        return model_dir / candidates[0]
 
     @staticmethod
     def _default_extra_args() -> Iterator[str]:

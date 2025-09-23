@@ -6,3 +6,5 @@ scikit-learn
 sentence-transformers
 spacy
 vaderSentiment
+beautifulsoup4
+lxml

@@ -1,11 +1,10 @@
 
 import tkinter as tk
 from tkinter import ttk
-import sqlite3
 import pandas as pd
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from discover.src import util as discover_util
+from discover.src import db_manager
 
 class QuadrantView(ttk.Frame):
     def __init__(self, master: tk.Widget, brand_colors: dict):
@@ -45,14 +44,21 @@ class QuadrantView(ttk.Frame):
 
     def update_plot(self):
         try:
-            conn = discover_util.get_db()
-            df = pd.read_sql_query(
-                """SELECT canonical_label, latest_signal, latest_delta
-                   FROM trend_clusters
-                   WHERE active = 1""",
-                conn
-            )
-            conn.close()
+            with db_manager.get_db_connection() as conn:
+                df = pd.read_sql_query(
+                    """SELECT 
+                           name as canonical_label, 
+                           discussion_score as latest_signal,
+                           CASE discussion_score_trend
+                               WHEN 'rising' THEN 1
+                               WHEN 'dying' THEN -1
+                               ELSE 0
+                           END as latest_delta
+                       FROM themes
+                       ORDER BY discussion_score DESC
+                       LIMIT 20""",
+                    conn
+                )
         except Exception as e:
             self._style_no_data_message(f"Failed to load trend data:\n{e}")
             return

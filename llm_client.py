@@ -1,4 +1,4 @@
-﻿"""Client helper for interacting with a local llama.cpp server."""
+"""Client helper for interacting with a local llama.cpp server."""
 from __future__ import annotations
 
 import json
@@ -40,6 +40,8 @@ class LlamaCppClient:
         system_prompt: Optional[str] = None,
         temperature: float = 0.2,
         top_p: float = 0.9,
+        top_k: int = 40,
+        repeat_penalty: float = 1.1,
         max_tokens: int = 512,
         stop: Optional[Sequence[str]] = None,
     ) -> str:
@@ -52,6 +54,8 @@ class LlamaCppClient:
                     system_prompt=system_prompt,
                     temperature=temperature,
                     top_p=top_p,
+                    top_k=top_k,
+                    repeat_penalty=repeat_penalty,
                     max_tokens=max_tokens,
                     stop=stop_sequences,
                 )
@@ -67,6 +71,8 @@ class LlamaCppClient:
                     prompt,
                     temperature=temperature,
                     top_p=top_p,
+                    top_k=top_k,
+                    repeat_penalty=repeat_penalty,
                     max_tokens=max_tokens,
                     stop=stop_sequences,
                 )
@@ -87,6 +93,8 @@ class LlamaCppClient:
         system_prompt: Optional[str],
         temperature: float,
         top_p: float,
+        top_k: int,
+        repeat_penalty: float,
         max_tokens: int,
         stop: Sequence[str],
     ) -> str:
@@ -100,6 +108,8 @@ class LlamaCppClient:
             "messages": messages,
             "temperature": temperature,
             "top_p": top_p,
+            "top_k": top_k,
+            "repetition_penalty": repeat_penalty,
             "max_tokens": max_tokens,
         }
         if stop:
@@ -130,6 +140,8 @@ class LlamaCppClient:
         *,
         temperature: float,
         top_p: float,
+        top_k: int,
+        repeat_penalty: float,
         max_tokens: int,
         stop: Sequence[str],
     ) -> str:
@@ -138,6 +150,8 @@ class LlamaCppClient:
             "prompt": prompt,
             "temperature": temperature,
             "top_p": top_p,
+            "top_k": top_k,
+            "repeat_penalty": repeat_penalty,
             "max_tokens": max_tokens,
             "stream": False,
         }
@@ -178,6 +192,8 @@ def generate_completion(
     system_prompt: Optional[str] = None,
     temperature: float = 0.2,
     top_p: float = 0.9,
+    top_k: int = 40,
+    repeat_penalty: float = 1.1,
     max_tokens: int = 512,
     stop: Optional[Iterable[str]] = None,
     client: Optional[LlamaCppClient] = None,
@@ -190,6 +206,8 @@ def generate_completion(
         system_prompt=system_prompt,
         temperature=temperature,
         top_p=top_p,
+        top_k=top_k,
+        repeat_penalty=repeat_penalty,
         max_tokens=max_tokens,
         stop=list(stop or []),
     )
