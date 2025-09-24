@@ -87,23 +87,46 @@ Output only the theme as a 2-5 word noun phrase.""")
         print(f"Error during theme extraction: {e}")
         return "Uncategorized"
 
-def get_merge_decision(new_theme, candidate_themes):
-    """Asks the LLM to decide if a new theme should be merged into a candidate."""
-    if not candidate_themes:
+def get_merge_decision(new_theme, candidate_matches, min_similarity=0.6):
+    """Uses the LLM to decide if the proposed theme matches an existing one."""
+    if not candidate_matches:
         return None
 
-    candidate_names = [c['name'] for c in candidate_themes]
-    
+    best_similarity = max((match.get('similarity', 0.0) for match in candidate_matches), default=0.0)
+    if best_similarity < min_similarity:
+        return None
+
+    candidate_lines = []
+    candidate_map = {}
+    for index, match in enumerate(candidate_matches, start=1):
+        theme = match.get('theme') or {}
+        name = theme.get('name')
+        if not name:
+            continue
+
+        candidate_map[name] = theme
+        similarity = match.get('similarity', 0.0)
+        titles = match.get('example_titles') or []
+        display_titles = '; '.join(titles[:3]) if titles else 'No linked stories yet.'
+        candidate_lines.append(
+            f"{index}. {name}\n   similarity: {similarity:.2f}\n   example stories: {display_titles}"
+        )
+
+    if not candidate_lines:
+        return None
+
     system_prompt = (
-        "You are a theme categorization expert. Your task is to determine if the 'new theme' fits well into one of the 'existing categories'."
-        "If it is a good fit, respond with the exact name of the best matching category. Otherwise, respond with only the word 'None'."
+        "You group Hacker News discussions into reusable themes. "
+        "Merge the proposal into an existing theme only when it clearly refers to the same recurring topic. "
+        "Respond with 'None' whenever the match is uncertain."
     )
 
     prompt = (
-        f"New theme: '{new_theme}'\n\n"
-        f"Existing categories:\n"
-        f"- {'\n- '.join(candidate_names)}\n\n"
-        f"Which category is the best fit? If none are a good fit, say 'None'."
+        f"Proposed theme: {new_theme}\n\n"
+        "Candidate themes with similar embeddings:\n"
+        f"{'\n'.join(candidate_lines)}\n\n"
+        "Respond with the exact name of the best matching existing theme. "
+        "If none align closely, answer with the single word None."
     )
 
     try:
@@ -111,20 +134,37 @@ def get_merge_decision(new_theme, candidate_themes):
             prompt,
             system_prompt=system_prompt,
             temperature=0.1,
-            max_tokens=20 # Enough to return a theme name
+            max_tokens=32
         )
-        decision = decision.strip().replace('"', '')
+        decision_text = decision.strip().strip('"').strip("'")
 
-        if decision in candidate_names:
-            # Find the full theme object that matches the name
-            for theme in candidate_themes:
-                if theme['name'] == decision:
-                    return theme
-        return None # If the LLM said 'None' or an invalid category
+        if not decision_text:
+            return None
+
+        if 'none' in decision_text.lower():
+            return None
+
+        if decision_text in candidate_map:
+            return candidate_map[decision_text]
+
+        for name, theme in candidate_map.items():
+            if decision_text.lower() == name.lower():
+                return theme
+
+        tokens = decision_text.split()
+        if tokens and tokens[0].isdigit():
+            index = int(tokens[0])
+            if 1 <= index <= len(candidate_matches):
+                matched = candidate_matches[index - 1].get('theme')
+                if matched:
+                    return matched
+
+        return None
 
     except Exception as e:
         print(f"Error during merge decision: {e}")
         return None
+
 
 
 def get_embedding(text):

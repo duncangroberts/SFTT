@@ -16,7 +16,6 @@ import pandas as pd
 import discovery_llm
 from discover.src.discover_gui import DiscoverTab
 from discover.src.charts_gui import ChartsTab
-from quadrant_view import QuadrantView
 from llm_client import LlamaCppClient, LLMClientError
 
 class App(tk.Tk):
@@ -75,20 +74,38 @@ class App(tk.Tk):
         self._task_thread: threading.Thread | None = None
         self._running: bool = False
 
-        self.notebook = ttk.Notebook(self, style='BrandNotebook.TNotebook')
-        self.notebook.pack(pady=10, padx=10, fill="both", expand=True)
+        self.module_notebook = ttk.Notebook(self, style='BrandNotebook.TNotebook')
+        self.module_notebook.pack(pady=10, padx=10, fill="both", expand=True)
 
-        self.create_run_view()
-        self.create_db_view()
-        self.create_analyst_view()
-        self.create_quadrant_view()
-        self.create_config_view()
-        self.create_comment_volume_view()
-        self.create_trajectories_view()
-        self.create_trends_view()
-        self.create_discovery_view()
-        self.create_discover_charts_view()
-        self.create_trend_quadrant_view()
+        tech_module = ttk.Frame(self.module_notebook)
+        tech_module.grid_rowconfigure(0, weight=1)
+        tech_module.grid_columnconfigure(0, weight=1)
+        self.module_notebook.add(tech_module, text="Technology Trends")
+
+        self.tech_notebook = ttk.Notebook(tech_module, style='BrandNotebook.TNotebook')
+        self.tech_notebook.pack(fill="both", expand=True, padx=5, pady=5)
+
+        discover_module = ttk.Frame(self.module_notebook)
+        discover_module.grid_rowconfigure(0, weight=1)
+        discover_module.grid_columnconfigure(0, weight=1)
+        self.module_notebook.add(discover_module, text="Discover")
+
+        self.discover_notebook = ttk.Notebook(discover_module, style='BrandNotebook.TNotebook')
+        self.discover_notebook.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Technology Trends sub-tabs
+        self.create_run_view(self.tech_notebook)
+        self.create_db_view(self.tech_notebook)
+        self.create_analyst_view(self.tech_notebook)
+        self.create_quadrant_view(self.tech_notebook)
+        self.create_config_view(self.tech_notebook)
+        self.create_comment_volume_view(self.tech_notebook)
+        self.create_trajectories_view(self.tech_notebook)
+        self.create_trends_view(self.tech_notebook)
+
+        # Discover sub-tabs
+        self.create_discovery_view(self.discover_notebook)
+        self.create_discover_charts_view(self.discover_notebook)
 
         # Log startup environment details after UI is ready
         try:
@@ -125,6 +142,8 @@ class App(tk.Tk):
         style.map('Brand.Treeview', background=[('selected', self.brand_colors['accent_light'])], foreground=[('selected', self.brand_colors['bg'])])
         style.configure('TLabel', background=panel, foreground=text_color)
         style.configure('TFrame', background=panel)
+        style.configure('TLabelframe', background=panel, foreground=text_color)
+        style.configure('TLabelframe.Label', background=panel, foreground=text_color)
         style.configure('TButton', background=accent, foreground=self.brand_colors['bg'], borderwidth=0)
         style.map('TButton', background=[('active', self.brand_colors['accent_light'])], foreground=[('active', self.brand_colors['bg'])])
         style.configure('TCombobox', fieldbackground=fig_bg, background=fig_bg, foreground=text_color)
@@ -163,7 +182,17 @@ class App(tk.Tk):
         self.dark_mode_var.set(self.current_theme == 'dark')
         self._configure_brand_styles()
         self._update_custom_widget_colors()
+        for notebook in (getattr(self, 'module_notebook', None), getattr(self, 'tech_notebook', None), getattr(self, 'discover_notebook', None)):
+            if notebook is not None:
+                try:
+                    notebook.configure(style='BrandNotebook.TNotebook')
+                except tk.TclError:
+                    pass
         self._refresh_plots_after_theme_change()
+        if hasattr(self, 'discover_tab') and self.discover_tab is not None:
+            self.discover_tab.apply_theme()
+        if hasattr(self, 'discover_charts_tab') and self.discover_charts_tab is not None:
+            self.discover_charts_tab.apply_theme()
 
     def _toggle_theme(self):
         requested_theme = 'dark' if self.dark_mode_var.get() else 'light'
@@ -219,25 +248,10 @@ class App(tk.Tk):
         ax.text(0.5, 0.5, message, ha='center', va='center', color=self.brand_colors['muted'], fontsize=11)
         ax.axis('off')
 
-    def create_run_view(self):
-        run_frame = ttk.Frame(self.notebook)
-        self.notebook.add(run_frame, text="Run")
+    def create_run_view(self, notebook):
+        run_frame = ttk.Frame(notebook)
+        notebook.add(run_frame, text="Run")
 
-        self.initial_load_button = ttk.Button(
-            run_frame, 
-            text="Initial 3-Year Data Load", 
-            command=self.run_initial_load
-        )
-        self.initial_load_button.pack(pady=10)
-
-        self.monthly_update_button = ttk.Button(
-            run_frame, 
-            text="Run Last Month's Update", 
-            command=self.run_monthly_update
-        )
-        self.monthly_update_button.pack(pady=10)
-
-        # Run selected month (YYYY-MM)
         run_month_frame = ttk.Frame(run_frame)
         run_month_frame.pack(pady=10, fill="x")
         ttk.Label(run_month_frame, text="Run Selected Month (YYYY-MM):").pack(side=tk.LEFT, padx=5)
@@ -251,28 +265,13 @@ class App(tk.Tk):
         self.run_month_button = ttk.Button(run_month_frame, text="Run Month", command=self.run_selected_month)
         self.run_month_button.pack(side=tk.LEFT, padx=5)
 
-        # One-day runner
-        one_day_frame = ttk.Frame(run_frame)
-        one_day_frame.pack(pady=10, fill="x")
-        ttk.Label(one_day_frame, text="Run Specific Day (YYYY-MM-DD):").pack(side=tk.LEFT, padx=5)
-        self.one_day_entry = ttk.Entry(one_day_frame, width=12)
-        try:
-            default_day = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
-        except Exception:
-            default_day = "2025-01-01"
-        self.one_day_entry.insert(0, default_day)
-        self.one_day_entry.pack(side=tk.LEFT)
-        self.run_day_button = ttk.Button(one_day_frame, text="Run Day", command=self.run_specific_day)
-        self.run_day_button.pack(side=tk.LEFT, padx=5)
-
         self.purge_button = ttk.Button(
-            run_frame, 
-            text="Purge Database", 
+            run_frame,
+            text="Purge Database",
             command=self.purge_database
         )
         self.purge_button.pack(pady=10)
 
-        # Progress bar and status
         self.progress = ttk.Progressbar(run_frame, orient="horizontal", mode="determinate", length=500, style='Brand.Horizontal.TProgressbar')
         self.progress.pack(pady=5, fill="x")
         self.status_var = tk.StringVar(value="Idle")
@@ -285,7 +284,7 @@ class App(tk.Tk):
     def _set_running(self, running: bool):
         self._running = running
         state = ("disabled" if running else "normal")
-        for btn in [self.initial_load_button, self.monthly_update_button, self.run_month_button, self.run_day_button, self.purge_button]:
+        for btn in [self.run_month_button, self.purge_button]:
             try:
                 btn.configure(state=state)
             except Exception:
@@ -571,9 +570,9 @@ class App(tk.Tk):
             except Exception:
                 pass
 
-    def create_db_view(self):
-        db_frame = ttk.Frame(self.notebook)
-        self.notebook.add(db_frame, text="Database")
+    def create_db_view(self, notebook):
+        db_frame = ttk.Frame(notebook)
+        notebook.add(db_frame, text="Database")
 
         tree_container = ttk.Frame(db_frame)
         tree_container.pack(fill="both", expand=True)
@@ -633,9 +632,9 @@ class App(tk.Tk):
             self.log(f"DB dedupe error: {e}")
             messagebox.showerror("Error", f"Deduplication failed: {e}")
 
-    def create_analyst_view(self):
-        analyst_frame = ttk.Frame(self.notebook)
-        self.notebook.add(analyst_frame, text="Analyst Scores")
+    def create_analyst_view(self, notebook):
+        analyst_frame = ttk.Frame(notebook)
+        notebook.add(analyst_frame, text="Analyst Scores")
 
         # Month selector
         top = ttk.Frame(analyst_frame)
@@ -794,9 +793,9 @@ class App(tk.Tk):
         except Exception:
             pass
 
-    def create_quadrant_view(self):
-        quadrant_frame = ttk.Frame(self.notebook)
-        self.notebook.add(quadrant_frame, text="Quadrant")
+    def create_quadrant_view(self, notebook):
+        quadrant_frame = ttk.Frame(notebook)
+        notebook.add(quadrant_frame, text="Quadrant")
 
         # Month Selector
         ttk.Label(quadrant_frame, text="Month:").pack(pady=5)
@@ -827,9 +826,9 @@ class App(tk.Tk):
     # ----------------------------
     # Configuration View (sources, technologies, subterms)
     # ----------------------------
-    def create_config_view(self):
-        cfg_frame = ttk.Frame(self.notebook)
-        self.notebook.add(cfg_frame, text="Configuration")
+    def create_config_view(self, notebook):
+        cfg_frame = ttk.Frame(notebook)
+        notebook.add(cfg_frame, text="Configuration")
 
         self.config_data = ui_run_controller.load_config()
 
@@ -1070,9 +1069,9 @@ class App(tk.Tk):
         self.quadrant_has_data = True
         self.canvas.draw()
 
-    def create_comment_volume_view(self):
-        volume_frame = ttk.Frame(self.notebook)
-        self.notebook.add(volume_frame, text="Comment Volume")
+    def create_comment_volume_view(self, notebook):
+        volume_frame = ttk.Frame(notebook)
+        notebook.add(volume_frame, text="Comment Volume")
 
         ctrl = ttk.Frame(volume_frame)
         ctrl.pack(fill="x", padx=10, pady=5)
@@ -1161,9 +1160,9 @@ class App(tk.Tk):
         self.comment_canvas.draw()
 
 
-    def create_trajectories_view(self):
-        traj_frame = ttk.Frame(self.notebook)
-        self.notebook.add(traj_frame, text="Trajectories")
+    def create_trajectories_view(self, notebook):
+        traj_frame = ttk.Frame(notebook)
+        notebook.add(traj_frame, text="Trajectories")
 
         ctrl = ttk.Frame(traj_frame)
         ctrl.pack(fill="x", padx=10, pady=5)
@@ -1223,8 +1222,8 @@ class App(tk.Tk):
 
         self.traj_ax.clear()
         self._prepare_axis(self.traj_ax, self.traj_fig)
-        self.traj_ax.set_xlabel("Momentum (tone + analyst)", color=self.brand_colors['muted'])
-        self.traj_ax.set_ylabel("Conviction (HN + analyst)", color=self.brand_colors['muted'])
+        self.traj_ax.set_xlabel("Momentum", color=self.brand_colors['muted'])
+        self.traj_ax.set_ylabel("Conviction", color=self.brand_colors['muted'])
         self.traj_ax.set_title(f"Trajectories (last {months_back} months)", color=self.brand_colors['accent_light'])
 
         x_vals = focus_df['momentum_0_100'].astype(float)
@@ -1297,9 +1296,9 @@ class App(tk.Tk):
         self.traj_has_data = True
         self.traj_canvas.draw()
 
-    def create_trends_view(self):
-        trends_frame = ttk.Frame(self.notebook)
-        self.notebook.add(trends_frame, text="Trends")
+    def create_trends_view(self, notebook):
+        trends_frame = ttk.Frame(notebook)
+        notebook.add(trends_frame, text="Trends")
 
         ctrl = ttk.Frame(trends_frame)
         ctrl.pack(fill="x", padx=10, pady=5)
@@ -1371,13 +1370,14 @@ class App(tk.Tk):
 
 
 
-    def create_discovery_view(self):
-        discovery_frame = ttk.Frame(self.notebook)
-        self.notebook.add(discovery_frame, text="Discover")
+    def create_discovery_view(self, notebook):
+        discovery_frame = ttk.Frame(notebook)
+        notebook.add(discovery_frame, text="Discover")
         try:
-            discover_tab = DiscoverTab(discovery_frame, self)
-            discover_tab.pack(fill="both", expand=True)
+            self.discover_tab = DiscoverTab(discovery_frame, self)
+            self.discover_tab.pack(fill="both", expand=True)
         except Exception as exc:
+            self.discover_tab = None
             fallback = ttk.Frame(discovery_frame)
             fallback.pack(fill="both", expand=True, padx=20, pady=20)
             ttk.Label(
@@ -1387,14 +1387,6 @@ class App(tk.Tk):
                 anchor='center'
             ).pack(fill='both', expand=True)
 
-    def create_trend_quadrant_view(self):
-        quadrant_frame = ttk.Frame(self.notebook)
-        self.notebook.add(quadrant_frame, text="Trend Quadrant")
-        try:
-            quadrant_view = QuadrantView(quadrant_frame, self.brand_colors)
-            quadrant_view.pack(fill="both", expand=True)
-        except Exception as e:
-            ttk.Label(quadrant_frame, text=f"Error loading Quadrant View: {e}").pack(pady=20, padx=20)
     def run_theme_discovery(self):
         messagebox.showinfo("Discover", "Use the Discover tab controls to run the new pipeline.")
     def _end_discovery_run(self):
@@ -1564,9 +1556,9 @@ class App(tk.Tk):
         )
         self.discovery_text.configure(state="disabled")
 
-    def create_llm_settings_view(self):
-        settings_frame = ttk.Frame(self.notebook)
-        self.notebook.add(settings_frame, text="LLM Prompt")
+    def create_llm_settings_view(self, notebook):
+        settings_frame = ttk.Frame(notebook)
+        notebook.add(settings_frame, text="LLM Prompt")
 
         ttk.Label(
             settings_frame,
@@ -1742,11 +1734,13 @@ class App(tk.Tk):
             df.to_json(file_path, orient="records")
             messagebox.showinfo("Success", f"Data saved to {file_path}")
 
-    def create_discover_charts_view(self):
-        charts_frame = ttk.Frame(self.notebook)
-        self.notebook.add(charts_frame, text="Discover Charts")
+    def create_discover_charts_view(self, notebook):
+        charts_frame = ttk.Frame(notebook)
+        notebook.add(charts_frame, text="Discover Charts")
         try:
-            charts_tab = ChartsTab(charts_frame, self)
-            charts_tab.pack(fill="both", expand=True)
+            self.discover_charts_tab = ChartsTab(charts_frame, self)
+            self.discover_charts_tab.pack(fill="both", expand=True)
+            self.discover_charts_tab.apply_theme()
         except Exception as e:
+            self.discover_charts_tab = None
             ttk.Label(charts_frame, text=f"Error loading Discover Charts: {e}").pack(pady=20, padx=20)

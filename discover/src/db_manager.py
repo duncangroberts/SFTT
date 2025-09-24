@@ -47,6 +47,8 @@ def setup_database():
         with open(SCHEMA_PATH, 'r') as f:
             schema_sql = f.read()
         conn.executescript(schema_sql)
+        cleanup_theme_story_links(connection=conn)
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_theme_stories_story ON theme_stories(story_id)")
         print("Database setup complete.")
 
 @contextmanager
@@ -96,6 +98,13 @@ def get_theme_by_name(theme_name):
         theme = cursor.fetchone()
         return dict(theme) if theme else None
 
+def get_theme_by_id(theme_id):
+    """Gets a theme by its ID."""
+    with get_db_connection() as conn:
+        cursor = conn.execute("SELECT * FROM themes WHERE id = ?", (theme_id,))
+        theme = cursor.fetchone()
+        return dict(theme) if theme else None
+
 def get_all_themes_with_embeddings():
     """Retrieves all themes with their embeddings."""
     with get_db_connection() as conn:
@@ -104,10 +113,14 @@ def get_all_themes_with_embeddings():
         return [dict(theme) for theme in themes]
 
 def link_story_to_theme(story_id, theme_id):
-    """Creates an association between a story and a theme."""
+    """Associates a story with exactly one theme, replacing any previous link."""
     with get_db_connection() as conn:
         conn.execute(
-            "INSERT OR IGNORE INTO theme_stories (story_id, theme_id) VALUES (?, ?)",
+            "DELETE FROM theme_stories WHERE story_id = ?",
+            (story_id,)
+        )
+        conn.execute(
+            "INSERT INTO theme_stories (story_id, theme_id) VALUES (?, ?)",
             (story_id, theme_id)
         )
         conn.commit()
@@ -126,6 +139,50 @@ def get_stories_for_theme(theme_id):
         stories = cursor.fetchall()
         return [dict(story) for story in stories]
 
+
+
+def get_story_titles_for_theme(theme_id, limit=3):
+    """Returns up to limit story titles for the given theme, newest first."""
+    with get_db_connection() as conn:
+        cursor = conn.execute(
+            """SELECT s.title
+               FROM stories s
+               JOIN theme_stories ts ON s.id = ts.story_id
+               WHERE ts.theme_id = ?
+               ORDER BY s.processed_at DESC
+               LIMIT ?
+            """,
+            (theme_id, limit)
+        )
+        return [row['title'] for row in cursor.fetchall() if row['title']]
+
+
+
+def cleanup_theme_story_links(connection=None):
+    """Ensures each story maps to a single theme and removes orphaned links."""
+    def _cleanup(conn):
+        conn.execute(
+            """DELETE FROM theme_stories
+            WHERE story_id NOT IN (SELECT id FROM stories)
+               OR theme_id NOT IN (SELECT id FROM themes)
+            """
+        )
+        conn.execute(
+            """DELETE FROM theme_stories
+            WHERE rowid NOT IN (
+                SELECT MAX(rowid)
+                FROM theme_stories
+                GROUP BY story_id
+            )
+            """
+        )
+        conn.commit()
+
+    if connection is not None:
+        _cleanup(connection)
+    else:
+        with get_db_connection() as conn:
+            _cleanup(conn)
 
 
 def update_theme(theme_id, discussion_score, sentiment_score, discussion_trend, sentiment_trend):
@@ -156,11 +213,12 @@ def get_top_themes(limit=10):
         return [dict(theme) for theme in themes]
 
 def purge_discover_database():
-    """Deletes all data from the themes and stories tables."""
+    """Deletes all discovery data, including theme/story associations."""
     with get_db_connection() as conn:
+        conn.execute("DELETE FROM theme_stories")
         conn.execute("DELETE FROM themes")
         conn.execute("DELETE FROM stories")
-        conn.execute("DELETE FROM sqlite_sequence WHERE name='themes'") # Reset autoincrement
+        conn.execute("DELETE FROM sqlite_sequence WHERE name IN ('themes', 'stories')")
         conn.commit()
         print("Discover database has been purged.")
 

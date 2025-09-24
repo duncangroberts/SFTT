@@ -7,30 +7,33 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from discover.src import hn_fetcher, content_processor, analysis, scoring, db_manager
 
-SIMILARITY_THRESHOLD = 0.9 # Threshold for merging themes
+MIN_MERGE_SIMILARITY = 0.6  # Minimum cosine similarity required to consider a merge
 
-def find_similar_themes(new_theme_name, new_theme_embedding, existing_themes, top_n=3):
-    """Finds the top N most similar themes from a list of existing themes."""
+def find_similar_themes(new_theme_name, new_theme_embedding, existing_themes, top_n=5):
+    """Returns the most similar existing themes along with their cosine similarity."""
     if new_theme_embedding is None or not existing_themes:
         return []
 
     new_embedding_reshaped = new_theme_embedding.reshape(1, -1)
-    similarities = []
+    matches = []
 
     for theme in existing_themes:
-        if theme['embedding'] is None:
+        embedding_blob = theme.get('embedding')
+        if embedding_blob is None:
             continue
-        
-        out = io.BytesIO(theme['embedding'])
+
+        out = io.BytesIO(embedding_blob)
         out.seek(0)
         existing_embedding = np.load(out).reshape(1, -1)
-        
-        sim = cosine_similarity(new_embedding_reshaped, existing_embedding)[0][0]
-        similarities.append((theme, sim))
-    
-    # Sort by similarity score in descending order and return the top N
-    similarities.sort(key=lambda x: x[1], reverse=True)
-    return [theme for theme, sim in similarities[:top_n]]
+
+        similarity = cosine_similarity(new_embedding_reshaped, existing_embedding)[0][0]
+        matches.append({
+            'theme': theme,
+            'similarity': float(similarity)
+        })
+
+    matches.sort(key=lambda item: item['similarity'], reverse=True)
+    return matches[:top_n]
 
 def run_discovery_pipeline(days=30, score_threshold=100, comments_threshold=50):
     """Runs the full pipeline to discover and score themes from Hacker News."""
@@ -88,9 +91,23 @@ def run_discovery_pipeline(days=30, score_threshold=100, comments_threshold=50):
         theme_embedding = analysis.get_embedding(theme_name)
 
         # 5. Get merge decision from LLM
-        candidate_themes = find_similar_themes(theme_name, theme_embedding, existing_themes)
-        merged_theme = analysis.get_merge_decision(theme_name, candidate_themes)
-        
+        candidate_matches = find_similar_themes(theme_name, theme_embedding, existing_themes)
+        candidate_context = []
+        for match in candidate_matches:
+            theme_candidate = match['theme']
+            example_titles = db_manager.get_story_titles_for_theme(theme_candidate['id'], limit=3)
+            candidate_context.append({
+                'theme': theme_candidate,
+                'similarity': match['similarity'],
+                'example_titles': example_titles,
+            })
+
+        merged_theme = analysis.get_merge_decision(
+            new_theme=theme_name,
+            candidate_matches=candidate_context,
+            min_similarity=MIN_MERGE_SIMILARITY
+        )
+
         if merged_theme:
             print(f"  - MERGE DECISION: LLM decided to merge '{merged_theme['name']}' into '{theme_name}'.")
             theme = merged_theme

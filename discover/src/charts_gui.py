@@ -2,8 +2,9 @@
 """GUI for the Discover Charts tab."""
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog, messagebox
 import pandas as pd
+import os
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
@@ -25,6 +26,9 @@ class ChartsTab(ttk.Frame):
         self.refresh_button = ttk.Button(controls_frame, text="Refresh Charts", command=self.refresh_charts)
         self.refresh_button.pack(side=tk.LEFT)
 
+        self.export_button = ttk.Button(controls_frame, text="Export PNG", command=self.export_png)
+        self.export_button.pack(side=tk.LEFT, padx=10)
+
         # --- Discussion Score Chart ---
         discussion_frame = ttk.LabelFrame(self, text="Top Themes by Discussion Score")
         discussion_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
@@ -44,6 +48,26 @@ class ChartsTab(ttk.Frame):
         self.sentiment_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
         self.after(200, self.refresh_charts)
+
+    def export_png(self):
+        """Export both charts to PNG files."""
+        file_path = filedialog.asksaveasfilename(
+            defaultextension='.png',
+            filetypes=[('PNG Image', '*.png'), ('All Files', '*.*')],
+            title='Export Discover Charts as PNG'
+        )
+        if not file_path:
+            return
+        base, _ = os.path.splitext(file_path)
+        discussion_path = f"{base}_discussion.png"
+        sentiment_path = f"{base}_sentiment.png"
+        try:
+            self.discussion_fig.savefig(discussion_path, dpi=300, facecolor=self.discussion_fig.get_facecolor())
+            self.sentiment_fig.savefig(sentiment_path, dpi=300, facecolor=self.sentiment_fig.get_facecolor())
+            messagebox.showinfo('Export Complete', f"Charts saved to:\n{discussion_path}\n{sentiment_path}")
+        except Exception as exc:
+            messagebox.showerror('Export Error', f'Failed to export charts: {exc}')
+
 
     def refresh_charts(self):
         themes = db_manager.get_top_themes(limit=10)
@@ -103,3 +127,12 @@ class ChartsTab(ttk.Frame):
         ax.set_facecolor(brand_colors['plot_bg'])
         ax.text(0.5, 0.5, message, ha='center', va='center', color=brand_colors['muted'], fontsize=11)
         ax.axis('off')
+
+    def apply_theme(self):
+        """Reapply chart styling to match the current application theme."""
+        colors = getattr(self.app, 'brand_colors', {})
+        for canvas in (self.discussion_canvas, self.sentiment_canvas):
+            widget = canvas.get_tk_widget()
+            widget.configure(background=colors.get('fig_bg', '#ffffff'), highlightthickness=0, borderwidth=0)
+        # Redraw charts so axes adopt the latest colors
+        self.refresh_charts()
