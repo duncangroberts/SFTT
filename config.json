@@ -84,6 +84,73 @@
         "nasa",
         "satellite"
       ]
+    },
+    {
+      "id": "IoT",
+      "name": "IoT",
+      "patterns": []
+    },
+    {
+      "id": "AI",
+      "name": "AI",
+      "patterns": [
+        "machine learning",
+        "neural network",
+        "deep learning"
+      ]
+    },
+    {
+      "id": "Cloud",
+      "name": "Cloud",
+      "patterns": [
+        "Edge Computing",
+        "Fog Computing",
+        "Mist Computing",
+        "Hybrid Cloud",
+        "Multi Cloud"
+      ]
+    },
+    {
+      "id": "Robotics",
+      "name": "Robotics",
+      "patterns": [
+        "robotics",
+        "robots",
+        "robot"
+      ]
+    },
+    {
+      "id": "Biotech",
+      "name": "Biotech",
+      "patterns": [
+        "biotech",
+        "genetic engineering",
+        "genomics",
+        "bio-engineering",
+        "CRISPR"
+      ]
+    },
+    {
+      "id": "Cybersecurity",
+      "name": "Cybersecurity",
+      "patterns": [
+        "cybersecurity"
+      ]
+    },
+    {
+      "id": "Nanotech",
+      "name": "Nanotech",
+      "patterns": [
+        "nanotech",
+        "nanotechnology"
+      ]
+    },
+    {
+      "id": "3D Printing",
+      "name": "3D Printing",
+      "patterns": [
+        "3D printing"
+      ]
     }
   ],
   "weights": {

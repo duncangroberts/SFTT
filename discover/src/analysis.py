@@ -3,15 +3,12 @@
 
 import os
 import re
-import spacy
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from sentence_transformers import SentenceTransformer
 
 # Assuming llm_client is in the parent directory, and discover.src is in the python path
 from llm_client import generate_completion
 
 # --- Load Models ---
-sentiment_analyzer = SentimentIntensityAnalyzer()
 
 # The path to the model is relative to the project root
 MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'models', 'all-MiniLM-L6-v2')
@@ -213,28 +210,3 @@ def get_llm_sentiment_score(text_content):
         return 0.0
 
 
-if __name__ == '__main__':
-    # Example Usage
-    sample_text = """
-    A new study published in Nature demonstrates a breakthrough in using AI for medical diagnostics. 
-    Researchers at a leading university have developed a deep learning model that can detect certain types of cancer 
-    from medical images with higher accuracy than human radiologists. The study's authors believe this technology 
-    could revolutionize the field, leading to earlier detection and better patient outcomes. However, they also 
-    caution that ethical considerations and regulatory approval are significant hurdles that must be addressed.
-    """
-
-    # 1. Extract Theme
-    print("1. Extracting Theme...")
-    theme = extract_theme_from_text(sample_text)
-    print(f"   - Extracted Theme: {theme}")
-
-    # 2. Analyze Sentiment
-    print("\n2. Analyzing Sentiment...")
-    sentiment = get_sentiment_score(sample_text)
-    print(f"   - Sentiment Score: {sentiment}")
-
-    # 3. Generate Embedding
-    if embedding_model:
-        print("\n3. Generating Embedding...")
-        embedding = get_embedding(theme)
-        print(f"   - Embedding for '{theme}': {embedding[:5]}...")

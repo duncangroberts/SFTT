@@ -16,6 +16,7 @@ import pandas as pd
 import discovery_llm
 from discover.src.discover_gui import DiscoverTab
 from discover.src.charts_gui import ChartsTab
+from firestore_sync_gui import FirestoreSyncTab
 from llm_client import LlamaCppClient, LLMClientError
 
 class App(tk.Tk):
@@ -92,6 +93,14 @@ class App(tk.Tk):
 
         self.discover_notebook = ttk.Notebook(discover_module, style='BrandNotebook.TNotebook')
         self.discover_notebook.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Firestore Sync Tab
+        sync_module = ttk.Frame(self.module_notebook)
+        sync_module.grid_rowconfigure(0, weight=1)
+        sync_module.grid_columnconfigure(0, weight=1)
+        self.module_notebook.add(sync_module, text="Firestore Sync")
+        firestore_sync_tab = FirestoreSyncTab(sync_module, self)
+        firestore_sync_tab.pack(fill="both", expand=True, padx=5, pady=5)
 
         # Technology Trends sub-tabs
         self.create_run_view(self.tech_notebook)

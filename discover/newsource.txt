@@ -1,0 +1,63 @@
+# Reddit Integration Notes
+
+## Candidate Subreddits
+
+- **Core news feeds**: `r/TechNews`, `r/innovation`, `r/TechBiz` (global vendor/R&D announcements).
+- **AI / ML**: `r/MachineLearning`, `r/artificial`, `r/LocalLLaMA`.
+- **Hardware & compute**: `r/Hardware`, `r/Semiconductor`.
+- **Energy & climate**: `r/energy`, `r/Fusion`, `r/renewableenergy`.
+- **Space & robotics**: `r/SpaceXLounge`, `r/aerospace`, `r/robotics`.
+- **Bio / health tech**: `r/syntheticbiology`, `r/bioinformatics`.
+
+Fetch multiple subreddits with a single listing request (e.g., `https://www.reddit.com/r/TechNews+innovation+MachineLearning/new.json`) and deduplicate by post ID so duplicates across communities are collapsed.
+
+## OAuth checklist
+
+1. Log into Reddit and visit `https://www.reddit.com/prefs/apps`.
+2. Create a **script** app:
+   - Name: `emerging-tech-tracker` (or similar).
+   - Redirect URI: `http://localhost:8080` (any reachable URI works).
+   - Note the generated `client_id` and `client_secret`.
+3. Authenticate with the script flow using your Reddit username and password plus the client credentials. Send a descriptive `User-Agent`, e.g. `emerging-tech-dashboard/1.0 by <reddit_user>`.
+4. Store the credentials securely (dotenv, OS keychain, or the existing config file).
+
+## Rate limiting strategy
+
+- Reddit recommends **60 requests per minute** per authenticated client; target 1 request/second to stay safe.
+- Implement a token bucket (`capacity = 60`, `refill = 60/min`) or a simple `time.sleep(1)` after each request.
+- Batch listing calls with `limit=100` and use the `after` cursor for pagination so you cover new items in a single pull.
+- On HTTP 429 (Too Many Requests), back off exponentially and retry with the `Retry-After` header.
+
+## Scoring alignment with Hacker News
+
+1. **Raw metrics**
+   - Use `ups` (not `score`) for upvotes.
+   - Use `num_comments` as the comment count.
+   - Capture `created_utc` and the post `id` (prefix with `reddit_` before inserting).
+
+2. **Discussion score**
+   - Reuse `scoring.calculate_discussion_score` logic: `ups + num_comments * 2`.
+   - Optionally clip `num_comments` at a high percentile to prevent viral threads from dwarfing HN stories.
+
+3. **Sentiment**
+   - Build the LLM input from title + selftext + sampled top-level comments (use `/comments/<id>.json?depth=1&limit=50`).
+   - Call `analysis.get_llm_sentiment_score` to keep the -1..1 scale identical to HN.
+
+4. **Normalisation**
+   - Track the source (`hn` vs `reddit`) in memory when scoring themes.
+   - After computing discussion scores, apply either:
+     - Per-source z-scores before merging, or
+     - A scaling factor (median HN score / median Reddit score) so medians align.
+
+5. **Storage**
+   - Insert Reddit stories into `stories` with unique IDs (`reddit_<post_id>`).
+   - Link to themes via `theme_stories` exactly like HN items.
+   - Persist `discussion_score`, `sentiment_score`, and trends using existing `db_manager.update_theme` calls.
+
+## Operational notes
+
+- Apply the same lookback window (default 30 days) and minimum thresholds (score >= 100, comments >= 50) before processing a Reddit post.
+- Cache the last seen `full_name` (listing cursor) per subreddit so each run only fetches new items.
+- Respect subreddit-specific rules; some (e.g., `r/MachineLearning`) forbid promotion posts; filter them early with flair or automod metadata.
+- If you need domain-specific sentiment weighting later, store the raw `ups`, `num_comments`, and timestamps alongside the combined scores for auditing.
+

@@ -54,51 +54,8 @@ def save_config(cfg: dict) -> None:
     with open('config.json', 'w', encoding='utf-8') as f:
         json.dump(cfg, f, indent=2, ensure_ascii=False)
 
-def _tone_to_0_100(avg_tone: float | None) -> float:
-    """Maps GDELT average tone (approx -10..+10) to 0..100, with 50 neutral.
-
-    If avg_tone is None, returns 50.
-    """
-    if avg_tone is None:
-        return 50.0
-    val = ((float(avg_tone) + 10.0) / 20.0) * 100.0
-    return max(0.0, min(100.0, val))
-
-
-def _combine_overall(gdelt_0_100: float, hn_0_100: float | None, hn_count: int, weights: dict, logger: Optional[Callable[[str], None]] = None) -> float:
-    """Combine GDELT and HN into 0..100 with volume-weight and shrinkage.
-
-    - Shrink HN towards 50 by count: hn' = (n/(n+k_shrink))*hn + (k_shrink/(n+k_shrink))*50
-    - Effective HN weight: w_hn = base_h * n/(n + k_weight)
-    - GDELT weight fixed: w_g = base_g
-    """
-    base_g = float(weights.get('base_g', 0.7))
-    base_h = float(weights.get('base_h', 0.3))
-    k_shrink = float(weights.get('k_shrink', 200))
-    k_weight = float(weights.get('k_weight', 200))
-    if hn_0_100 is None or hn_count <= 0:
-        return gdelt_0_100
-    n = max(0, int(hn_count))
-    # Shrink HN towards 50
-    hn_shrunk = (n / (n + k_shrink)) * hn_0_100 + (k_shrink / (n + k_shrink)) * 50.0
-    # Effective HN weight (saturating)
-    w_hn_eff = base_h * (n / (n + k_weight)) if (n + k_weight) > 0 else 0.0
-    w_g = base_g
-    denom = w_g + w_hn_eff
-    overall = (gdelt_0_100 * w_g + hn_shrunk * w_hn_eff) / denom if denom > 0 else gdelt_0_100
-    if logger:
-        try:
-            logger(f"Combine: G={gdelt_0_100:.1f} HN={hn_0_100:.1f} n={n} -> hn'={hn_shrunk:.1f} w_g={w_g:.2f} w_hn={w_hn_eff:.2f} => overall={overall:.1f}")
-        except Exception:
-            pass
-    return overall
-
-
 def run_month_update(target_month: str, logger: Optional[Callable[[str], None]] = None):
-    """Fetch timelinetone, compute average_tone, add HN sentiment, and persist monthly combined momentum.
-
-    Momentum now represents the z-score across technologies of the overall combined score (0..100).
-    """
+    """Fetch timelinetone, compute average_tone, attach Hacker News sentiment metrics, and persist raw monthly fields."""
     def log(msg: str):
         (logger or print)(msg)
 

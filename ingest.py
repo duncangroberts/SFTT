@@ -5,21 +5,11 @@ import numpy as np
 
 from db import DATABASE_FILE
 
-def dedupe_records(records: list[dict], tech_id: str) -> list[dict]:
-    """Deduplicates records by URL, keeping the first occurrence."""
-    seen_urls = set()
-    deduplicated = []
-    for record in records:
-        if record['url'] not in seen_urls:
-            deduplicated.append(record)
-            seen_urls.add(record['url'])
-    return deduplicated
-
 def aggregate_month(tech_id: str, tech_name: str, month: str, tone_records: list[dict]) -> dict:
     """Aggregates monthly data using only tone points from timelinetone.
 
     - Ignores article counts and URLs.
-    - Returns average_tone only; downstream combines into overall score and momentum.
+    - Returns average_tone for later combination with other signals.
     """
     if not tone_records:
         return {
@@ -27,7 +17,6 @@ def aggregate_month(tech_id: str, tech_name: str, month: str, tone_records: list
             "tech_name": tech_name,
             "month": month,
             "average_tone": None,
-            "conviction_score": None,
             "run_at": datetime.now().isoformat()
         }
 
@@ -43,7 +32,6 @@ def aggregate_month(tech_id: str, tech_name: str, month: str, tone_records: list
         "tech_name": tech_name,
         "month": month,
         "average_tone": average_tone,
-        "conviction_score": None,
         "run_at": datetime.now().isoformat()
     }
 

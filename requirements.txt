@@ -8,3 +8,4 @@ spacy
 vaderSentiment
 beautifulsoup4
 lxml
+google-cloud-firestore

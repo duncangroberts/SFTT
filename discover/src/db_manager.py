@@ -31,25 +31,18 @@ DB_PATH = os.path.join(DB_DIR, 'discover.sqlite')
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), 'schema.sql')
 
 def setup_database():
-    """Creates the database and tables if they don't exist."""
+    """Creates the database and tables if they do not exist."""
     os.makedirs(DB_DIR, exist_ok=True)
-    # Use check_same_thread=False to allow access from different threads (GUI and pipeline)
-    with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
-        # Check if embedding column exists
-        cursor = conn.cursor()
-        try:
-            cursor.execute("SELECT embedding FROM themes LIMIT 1")
-        except sqlite3.OperationalError:
+    with sqlite3.connect(DB_PATH, detect_types=sqlite3.PARSE_DECLTYPES, check_same_thread=False) as conn:
+        with open(SCHEMA_PATH, 'r', encoding='utf-8') as schema_file:
+            conn.executescript(schema_file.read())
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(themes)")}
+        if columns and 'embedding' not in columns:
             print("Adding 'embedding' column to themes table.")
-            cursor.execute("ALTER TABLE themes ADD COLUMN embedding BLOB")
-            conn.commit()
-
-        with open(SCHEMA_PATH, 'r') as f:
-            schema_sql = f.read()
-        conn.executescript(schema_sql)
+            conn.execute("ALTER TABLE themes ADD COLUMN embedding BLOB")
         cleanup_theme_story_links(connection=conn)
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_theme_stories_story ON theme_stories(story_id)")
-        print("Database setup complete.")
+        conn.commit()
 
 @contextmanager
 def get_db_connection():

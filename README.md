@@ -2,242 +2,168 @@
 
 ## Overview
 
-This desktop application provides a comprehensive dashboard for tracking and analyzing emerging technology trends. It integrates data from various sources, including Hacker News and GDELT, to offer both quantitative metrics and qualitative insights into technology momentum, adoption, and sentiment. The application features a modular design with a Tkinter-based graphical user interface (GUI) for easy interaction and visualization.
+This desktop application combines structured news signals from GDELT with community discussions from Hacker News to track emerging technology trends. A Tkinter GUI wraps two cooperating pipelines:
 
-### Key Features
+- **Technology Trends (GDELT)** generates monthly sentiment baselines per tracked technology and stores analyst adjustments.
+- **Discover (Hacker News + LLM)** uses a local `llama.cpp` server to summarise high-signal stories into recurring themes and charts the resulting discussion.
 
-*   **Multi-Source Data Ingestion**: Collects data from Hacker News stories and comments, and GDELT's global news monitoring.
-*   **Advanced Trend Discovery**: Utilizes natural language processing (NLP) techniques, including sentence embeddings and clustering, to identify emerging themes rather than just isolated keywords.
-*   **Quantifiable Trend Metrics**: Calculates "Signal," "Velocity," "Novelty," and "Persistence" scores for identified themes, enabling data-driven analysis.
-*   **Real-time Logging**: Provides detailed, real-time feedback on pipeline execution within the GUI.
-*   **Interactive Visualizations**: Offers various charts and tables, including a "Trend Quadrant" for high-level strategic insights and detailed views of individual themes.
-*   **Extensible Architecture**: Designed to allow for easy integration of new data sources and analytical components.
+The system ships with local models, SQLite databases, and export tooling so analysts can run everything offline.
 
-## Core Concepts & Metrics
+## Feature Highlights
 
-*   **Embeddings**: Numerical representations of text (stories, repo descriptions, READMEs) that capture semantic meaning. Used for finding similar content.
-*   **Signal**: A primary metric for a trend's current importance, combining popularity (HN points) with a time-decay factor (newer content contributes more).
-*   **Velocity**: (Previously "Momentum") Measures the change in a trend's Signal over time. A high positive Velocity indicates a rapidly growing trend.
-*   **Novelty**: Indicates how new a trend is. High for newly identified themes, decreasing as a theme persists.
-*   **Persistence**: Measures how consistently a trend appears over time. High for enduring themes.
-*   **Clustering**: The process of grouping semantically similar stories into distinct themes.
-*   **Hot Terms**: Individual keywords showing a significant surge in mentions or relevance within recent data.
+- Dual data pipelines that reconcile automated GDELT sentiment with Hacker News community signals.
+- Integrated local LLM workflow (via `llama-server.exe`) for naming themes, merging similar discussions, and scoring sentiment.
+- Rich Tkinter UI: scheduled/monthly runs, analyst score entry, quadrant visualisation, comment volume tracking, trajectory plots, and export buttons.
+- Dedicated Discover notebook with live logs, theme browser, chart exports, and an LLM server control panel.
+- All persistence handled by SQLite (`tracker_data.sqlite`, `discover/db/discover.sqlite`) with helper utilities for deduplication and purging.
 
-## Architecture & Data Flow
+## Quick Start
 
-The application follows a modular architecture, with distinct components for data ingestion, processing, analysis, and visualization.
+1. Install Python 3.11 or newer.
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   python -m spacy download en_core_web_sm
+   ```
+3. Ensure `models/` contains at least one `.gguf` model. Two examples are provided (`Meta-Llama-3.1-8B-Instruct-Q5_K_S.gguf`, `mistral-7b-instruct-v0.2.Q4_K_M.gguf`).
+4. Launch `tools/llama.cpp/llama-server.exe` manually or let the Discover tab start it for you.
+5. Run the GUI:
+   ```bash
+   python main.py
+   ```
+   On Windows you can double-click `run_app.cmd` or use `pythonw.exe main.py` to hide the console window.
+
+### Local LLM configuration
+
+- The Discover tab searches `models/` for `.gguf` files and runs `tools/llama.cpp/llama-server.exe -m <model> -c 4096`.
+- Override server settings with environment variables (`LLAMA_SERVER_URL`, `LLM_SERVER_URL`, `LLM_MODEL`) if you host the server elsewhere.
+- The system prompt used for theme synthesis lives in `prompts/discovery_system_prompt.txt`. Editing that file (or using the GUI prompt editor once exposed) customises the LLM behaviour.
+
+## Architecture
 
 ```
-+-------------------+       +-------------------+       +-------------------+
-|   Data Sources    |       |   Data Fetchers   |       |   Data Storage    |
-|-------------------|       |-------------------|       |-------------------|
-| - Hacker News     |-----> | - hn_fetch.py     |-----> | - discover.sqlite |
-| - GDELT           |-----> | - gdelt_fetch.py  |-----> | - tracker_data.sqlite |
-+-------------------+       +-------------------+       +-------------------+
-                                      |
-                                      v
-+-------------------+       +-------------------+       +-------------------+
-| Data Processing   |       | Trend Analysis    |       |   UI & Reporting  |
-|-------------------|       |-------------------|       |-------------------|
-| - embed_index.py  |-----> | - microtrends.py  |-----> | - gui.py          |
-|   (Embeddings,    |       |   (Clustering,    |       | - tk_discover.py  |
-|   Keywords)       |       |   Signal Calc.)   |       | - quadrant_view.py|
-+-------------------+       +-------------------+       +-------------------+
+GDELT API ---------> gdelt_fetch.py -> ingest.py -> db.py -> tracker_data.sqlite -> GUI (Technology Trends)
+Hacker News API ---> discover/src/hn_fetcher.py -> content_processor.py -> analysis.py & scoring.py -> discover/src/db_manager.py -> discover/db/discover.sqlite -> Discover GUI
+local llama.cpp server <-- llm_client.py --> analysis.py / Discover GUI
 ```
 
-### Core Modules
+### Key modules
 
-*   `main.py`: The main entry point for launching the Tkinter GUI.
-*   `gui.py`: Manages the overall Tkinter application, including tab creation, theme management, and inter-tab communication.
-*   `ui_run_controller.py`: Orchestrates the GDELT data ingestion and processing pipeline.
-*   `db.py`: Handles SQLite database schema creation, migrations, and general data access for the GDELT module.
-*   `config.json`: Stores application configuration, including technology patterns for GDELT analysis.
-*   `tracker_data.sqlite`: SQLite database for GDELT-related data (`monthly_sentiment`).
+- `main.py` boots the Tkinter application.
+- `gui.py` orchestrates notebooks, plots (matplotlib), logging, exports, and threading.
+- `ui_run_controller.py` coordinates Tech Trends runs (initial load, monthly run, ad-hoc dates) using `gdelt_fetch.py`, `hn_fetch.py`, and `ingest.py`.
+- `db.py` manages the `tracker_data.sqlite` schema plus helper routines for upserts, deduplication, and keyword baselines.
+- `discover/src/*` implements the Discover pipeline (Hacker News ingestion, LLM decisions, embedding storage, charts, and DB access).
+- `llm_client.py` + `llm_runtime.py` wrap llama.cpp HTTP endpoints and basic completion helpers.
 
-### Discovery Module (Hacker News)
+## Technology Trends (GDELT) Pipeline
 
-This module is responsible for identifying emerging trends from unstructured text data.
+1. Configuration (`config.json`):
+   - `weights`: governs how Hacker News sentiment is blended (currently unused after raw-only simplification).
+   - `technologies`: each entry supplies `id`, `name`, and `patterns` (strings forwarded to GDELT and HN searches).
+2. `ui_run_controller.run_month_update/monthly_update/initial_load` orchestrate data pulls.
+3. `gdelt_fetch.py` queries the GDELT Doc 2.0 `timelinetone` endpoint for each pattern inside the month window.
+4. `ingest.aggregate_month` averages tone values per technology and stamps `run_at` (no derived momentum/conviction fields are stored).
+5. `hn_fetch.compute_month_score` collects Hacker News sentiment (`hn_avg_compound`) and comment counts.
+6. `db.upsert_monthly_sentiment` writes everything into `tracker_data.sqlite::monthly_sentiment`.
+7. Analysts can enter literature/whimsy adjustments (-1..1) through the GUI; they are stored directly in the same table.
 
-*   `discover/src/hn_fetch.py`: Fetches Hacker News stories and their top comments. It incrementally fetches new data and has an increased limit (2000 stories) to ensure comprehensive coverage.
-*   `discover/src/embed_index.py`:
-    *   Processes text from Hacker News stories (title + comments).
-    *   Generates sentence embeddings for each item.
-    *   Extracts meaningful keywords, utilizing an expanded stopword list to filter out common, uninformative words.
-*   `discover/src/microtrends.py`:
-    *   The core of the trend analysis.
-    *   Calculates a "Signal" score for each item (story) based on its popularity metrics (HN score) and age, applying a time decay.
-    *   Selects the **top 500 items by Signal score** for clustering, ensuring the analysis focuses on the most impactful content.
-    *   Groups similar items into "themes" using a greedy clustering algorithm.
-    *   Calculates "Velocity," "Novelty," and "Persistence" for each theme.
-    *   Identifies "Hot Terms" by tracking surges in keyword mentions.
-*   `discover/src/tk_discover.py`: The Tkinter UI component for the Discovery module. It's split into two sub-tabs:
-    *   **Dashboard**: Displays the top emerging themes, a bar chart of their signal strength, a table of themes with their metrics, a list of hot terms, and a detailed view of items within a selected theme.
-    *   **Run & Log**: Contains controls for running the Discovery pipeline (lookback days, embedding model, LLM labels) and a real-time log display showing the progress of each stage.
-*   `discover/src/views.sql`: Defines SQL views, including `v_items`, which unifies Hacker News stories into a single logical table for consistent processing by `microtrends.py`.
-*   `discover/db/discover.sqlite`: The SQLite database specifically for the Discovery module's data (raw HN stories/comments, embeddings, terms, trend clusters, and snapshots).
+### tracker_data.sqlite schema
 
-## Setup & Installation
+- `monthly_sentiment(tech_id TEXT, tech_name TEXT, month TEXT, average_tone REAL, hn_avg_compound REAL, hn_comment_count INTEGER, analyst_lit_score REAL, analyst_whimsy_score REAL, run_at TEXT, PRIMARY KEY (tech_id, month))`.
+- `keyword_mentions(term TEXT, run_timestamp TEXT, window_days INTEGER, mentions INTEGER, base_score REAL, title_mentions INTEGER, comment_mentions INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(term, run_timestamp))` for optional keyword discovery tooling.
+- Use `db.deduplicate_monthly_sentiment()` (available via the Database tab) to keep the latest row per `(tech_id, month)` pair.
 
-### Prerequisites
+## Discover (Hacker News Theme) Pipeline
 
-*   Python 3.11+
-*   `pip` (Python package installer)
+1. `discover/src/pipeline.py` drives the run. It is called from `DiscoverTab` when "Run Discovery Pipeline" is pressed.
+2. `hn_fetcher.fetch_stories_for_past_days` pulls top stories (default 30 days, min score 100, min comments 50) using the official Firebase API in parallel.
+3. For each new story:
+   - `content_processor.fetch_and_extract_text` grabs and cleans the linked article.
+   - Comments are collected and concatenated with the title and article excerpt.
+4. `analysis.extract_theme_from_text` sends a constrained prompt to the local llama.cpp server to obtain a mid-level theme label.
+5. `analysis.get_embedding` encodes the theme name using the local `sentence-transformers` model (`models/all-MiniLM-L6-v2`). The embedding is stored as a NumPy blob.
+6. Existing themes (with embeddings) are compared using cosine similarity. Matches above `MIN_MERGE_SIMILARITY = 0.6` are merged; otherwise a new theme is created.
+7. `analysis.get_llm_sentiment_score` requests a numeric sentiment value (-1..1) from the LLM over the concatenated comment text.
+8. `scoring.calculate_discussion_score` computes `score + descendants*2` as a proxy for engagement; `scoring.determine_trend` labels sentiment change as `rising`, `falling`, or `stable`.
+9. `db_manager.update_theme` increments discussion score, overwrites sentiment score and trend fields, and stores story links in `theme_stories`.
 
-### Dependency Installation
+### discover/db/discover.sqlite schema
 
-Open your terminal or command prompt and navigate to the project's root directory. Then run:
+- `themes(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, discussion_score INTEGER, sentiment_score REAL, discussion_score_trend TEXT, sentiment_score_trend TEXT, embedding BLOB, created_at TIMESTAMP, updated_at TIMESTAMP)`.
+- `stories(id INTEGER PRIMARY KEY, title TEXT, url TEXT, processed_at TIMESTAMP)` prevents duplicate processing.
+- `theme_stories(theme_id INTEGER, story_id INTEGER, PRIMARY KEY(theme_id, story_id))` associates stories with exactly one theme. A unique index on `story_id` is applied during setup.
+- `discover/src/db_manager.setup_database()` runs on every Discover launch to apply schema changes and add any missing columns, then cleans orphaned links.
+
+### Discover configuration
+
+- `discover/discover_config.json` contains tuning constants (`comment_weight`, similarity thresholds, decay factors). Load it if you extend scoring or merging logic.
+- The system prompt template at `prompts/discovery_system_prompt.txt` is rendered with `{max_themes}` and saved through `discovery_llm.py` helpers.
+
+## Shared Utilities and Tests
+
+- `keyword_discovery.py` offers standalone helpers for surfacing trending keywords across public chatter (usable via `python -m unittest test_keyword_discovery.py`).
+- `tech_glossary.json` biases the keyword pipeline toward relevant domain terms.
+- `test_api.py` exercises the GDELT/Hacker News fetchers with lightweight smoke tests.
+
+## User Interface Walkthrough
+
+### Technology Trends notebook
+
+- **Run**: Initial 36 month backfill, last-month rerun, custom month run, one-day smoke tests, and a `Purge DB` action (dangerous—clears `monthly_sentiment`). Progress bars and the log console keep the user informed.
+- **Database**: Table view of `monthly_sentiment` with `Refresh` and `Deduplicate Rows` buttons.
+- **Analyst Scores**: Month selector plus grid entry boxes for literature & whimsy adjustments (-1..1). `Save All` persists to `monthly_sentiment`.
+- **Quadrant**: Plots Conviction (analyst scores) against Momentum (tone/normalised sentiment) for a selected month. Supports PNG/CSV/JSON exports and theming.
+- **Configuration**: Editor for `config.json` technologies, including ID, display name, and search patterns.
+- **Comment Volume**: Bar chart of Hacker News comment counts per technology for a selected month.
+- **Trajectories**: Line chart of sentiment trajectories over the last *N* months (configurable window).
+- **Trends**: Rolling z-score of average tone to visualise momentum changes. Each chart tab exposes PNG export helpers that honour the active dark/light theme.
+
+### Discover notebook
+
+- **Themes tab (DiscoverTab)**: Treeview of top themes with discussion score, sentiment, and trend labels. Selecting a theme reveals story titles, Hacker News links, and supporting signals. Buttons allow refreshing data or purging the Discover database. Logs stream underneath via the Run sub-tab.
+- **Run Discovery tab**: Start/stop buttons for the pipeline, log export (`.txt`), and status messages. Runs require the LLM server to be active.
+- **LLM Server tab**: Dropdown of `.gguf` models, `Start Server` / `Stop Server` controls, and live stdout mirroring for troubleshooting.
+- **Charts tab (`discover/src/charts_gui.py`)**: Side-by-side bar charts for top themes by discussion score and sentiment with PNG export.
+
+The application theme can be toggled between light/dark, and all text widgets honour the active palette (see `App._apply_theme`).
+
+## Operations & Maintenance
+
+- **Monthly cadence**: Use the Run tab's "Run Monthly Update" after month end, then review Analyst Scores and export reports.
+- **Database hygiene**: `Purge DB` (Technology Trends tab) clears `monthly_sentiment`; the Discover tab has its own purge button for `discover.sqlite`. Back up the SQLite files before pruning in production.
+- **Deduplication**: Run the Database tab's dedupe button if multiple runs wrote the same `(tech_id, month)` with different `run_at` stamps.
+- **LLM prompt tweaks**: Modify `prompts/discovery_system_prompt.txt` and restart the Discover pipeline to adjust theme naming.
+
+## Testing
+
+Run the existing tests before shipping changes:
 
 ```bash
-pip install requests pandas numpy matplotlib scikit-learn sentence-transformers
+python -m unittest test_keyword_discovery.py
+python -m unittest test_api.py
 ```
 
-### spaCy Setup
+You can add targeted smoke tests under the same pattern.
 
-The Discovery module uses spaCy for natural language processing. Install it and download the small English model:
+## Repository layout (selected)
 
-```bash
-pip install spacy
-python -m spacy download en_core_web_sm
+```
+assets/                     Static assets and screenshots
+config.json                 Technology tracking configuration
+discover/db/discover.sqlite Discover module SQLite database
+discover/src/               HN pipeline modules (GUI, pipeline, analysis, scoring, db_manager, etc.)
+db.py                       tracker_data schema + helpers
+gdelt_fetch.py              GDELT API client
+hn_fetch.py                 Hacker News sentiment helpers
+llm_client.py               llama.cpp HTTP client
+gui.py                      Tkinter application
+models/                     Local embedding + llama.cpp models
+requirements.txt            Python dependency list
+tracker_data.sqlite         Technology Trends SQLite database
+tools/llama.cpp/            Bundled llama.cpp binaries
 ```
 
-**Important**: If you are using a Python virtual environment, ensure it is activated *before* running the `pip install` and `python -m spacy download` commands.
+## Housekeeping
 
-### Running the Application
-
-*   **Without a console (Windows)**: Double-click `run_app.cmd` in the project root.
-*   **From a shell**:
-    ```bash
-    python main.py
-    ```
-    (Use `pythonw.exe main.py` on Windows to hide the console window.)
-
-## User Workflow & UI Guide
-
-The application's GUI is organized into several tabs, each serving a specific purpose.
-
-### Run Tab
-
-This tab is primarily for managing the GDELT data pipeline.
-*   **Initial 3-Year Data Load**: Fetches and processes GDELT data for the last 36 months.
-*   **Run Last Month's Update**: Recomputes data for the last completed month.
-*   **Run Selected Month (YYYY-MM)**: Allows you to specify and run data processing for a particular month.
-*   **Run Specific Day (YYYY-MM-DD)**: For quick tests, aggregates a single day's tone into its month.
-*   **Purge Database**: Deletes all GDELT-related data (`monthly_sentiment`) from `tracker_data.sqlite`.
-*   **Progress Bar & Status**: Shows the current state of the GDELT pipeline.
-*   **Log Text Area**: Displays detailed logs for the GDELT pipeline runs.
-
-### Database Tab
-
-Provides a read-only view of the `monthly_sentiment` table from `tracker_data.sqlite`.
-*   **Refresh Button**: Updates the displayed data.
-*   **Deduplicate Rows**: Cleans up duplicate entries in the `monthly_sentiment` table, keeping only the latest run for each tech/month.
-
-### Analyst Scores Tab
-
-Allows manual input of qualitative scores for technologies in the GDELT analysis.
-*   **Month Selector**: Choose the month for which to enter scores.
-*   **Technology Grid**: Displays a grid of technologies where you can input "Literature" and "Whimsy" scores (0-100). These are normalized to 0-1 internally.
-*   **Save All Button**: Persists all entered scores to the database.
-
-### Quadrant Tab
-
-Visualizes GDELT-based technology trends using "Momentum" and "Conviction" scores.
-*   **Month Selector**: Choose the month to visualize.
-*   **Plot**: Displays a scatter plot with technologies positioned based on their calculated Momentum (from GDELT tone) and Conviction (from analyst scores).
-*   **Export Buttons**: Allows exporting the chart as PNG, or the underlying data as CSV/JSON.
-
-### Comment Volume Tab
-
-Shows the distribution of Hacker News comment volume across technologies (GDELT-related).
-
-### Trajectories Tab
-
-Visualizes the historical movement of technologies on the Momentum vs. Conviction quadrant over a selected number of months (GDELT-related).
-
-### Trends Tab
-
-Displays line graphs of technology momentum over time (GDELT-related).
-
-### Discover Tab
-
-This is the core of the Hacker News trend analysis. It's split into two sub-tabs:
-
-#### Dashboard (Discover Sub-tab)
-
-*   **Top Emerging Themes Chart**: A horizontal bar chart visualizing the Signal strength of the top themes.
-*   **Themes Table**: Displays a table of identified themes with columns for:
-    *   **Theme**: The canonical label for the cluster.
-    *   **Signal**: The calculated importance score.
-    *   **? prev (Delta)**: The change in Signal from the previous run (Velocity).
-    *   **Items**: Number of stories in the theme.
-    *   **Interactions**: Total comments (for HN).
-    *   **Novelty**: How new the theme is.
-    *   **Persistence**: How consistently the theme appears.
-*   **Hot Terms**: A list of individual keywords currently surging in popularity.
-*   **Item Details Pane**: When you select a theme from the table, this pane displays the individual Hacker News stories that constitute that theme, along with their relevant metrics (e.g., HN score/comments) and age.
-
-#### Run & Log (Discover Sub-tab)
-
-*   **Lookback (days)**: Sets the historical window for fetching data (e.g., 7 days, 30 days).
-*   **Embedding model**: Specifies the path or name of the sentence transformer model to use.
-*   **LLM labels**: Checkbox to enable/disable using a local LLM for generating human-readable theme labels.
-*   **Run Discover Button**: Initiates the trend analysis pipeline.
-*   **Stop Button**: Attempts to cancel the current run.
-*   **Purge DB Button**: Deletes all Discovery module data (`discover.sqlite`).
-*   **Status Bar**: Shows a brief status of the current operation.
-*   **Real-time Log**: A text area that displays detailed, real-time logs of the Discovery pipeline's execution, including fetching, embedding, and clustering stages.
-
-### Trend Quadrant Tab (NEW)
-
-This new tab provides a strategic visualization of the Discovery module's themes.
-*   **Plot**: A scatter plot where each point represents a discovered theme.
-    *   **X-Axis: Velocity (Signal Change)**: How fast the theme's signal is changing.
-    *   **Y-Axis: Signal (Discussion Volume)**: The current overall importance of the theme.
-*   **Quadrants**: The plot is divided into four quadrants, helping to categorize themes:
-    *   **Leading (Top-Right)**: High Signal, High Velocity - Hot and growing.
-    *   **Established (Top-Left)**: High Signal, Low Velocity - Popular but stable or declining.
-    *   **Emerging (Bottom-Right)**: Low Signal, High Velocity - New and rapidly gaining traction.
-    *   **Niche (Bottom-Left)**: Low Signal, Low Velocity - Specialized or dormant.
-*   **Refresh Data Button**: Updates the plot with the latest trend data from the Discovery module.
-
-### LLM Prompt Tab
-
-Allows customization of the system prompt used by the local LLM for generating theme labels in the Discovery module.
-
-### Configuration Tab
-
-Manages the technologies tracked by the GDELT module, including their IDs, names, and search patterns.
-
-## Troubleshooting
-
-*   **"AttributeError: 'DiscoverUI' object has no attribute 'story_tree'"**: This indicates a mismatch in UI component names after refactoring. (This should be fixed by recent updates).
-*   **Same themes appear repeatedly**:
-    *   Ensure `hn_fetch.py`'s story ID limit is sufficiently high (e.g., 2000).
-    *   Verify that `microtrends.py` is processing the top 500 items by signal, not just the newest.
-    *   Confirm that `discover.sqlite` is being purged or updated correctly between runs if you expect entirely new results.
-*   **Empty Item Details Pane**: Ensure `tk_discover.py`'s `_populate_trend_details` method correctly handles the 'story' object type.
-*   **LLM not generating labels**: Check the LLM Prompt tab for errors, ensure your local LLM server is running and accessible, and verify the embedding model path.
-*   **No months appear in Analyst Scores after a purge**: Type a month (YYYY-MM) and "Save All" to create rows, or run a selected month first.
-*   **Quadrant has little/no X-axis variation**: Ensure multiple technologies have been processed for that month; normalization is across technologies for the month.
-*   **Timelinetone returns no values**: Try a different month or expand patterns; GDELT data coverage varies.
-*   **GUI shows a console window on launch**: Use `run_app.cmd` or target `pythonw.exe` in your shortcut.
-
-## Development & Contribution Notes
-
-*   **Code Style**: Adhere to PEP 8.
-*   **Modularity**: Keep components loosely coupled.
-*   **Testing**: Run `python -m unittest` for relevant test files (e.g., `test_keyword_discovery.py`).
-
-## Change Log (Recent)
-
-*   **2025-09-18**:
-    *   **Improved Trend Relevance**:
-        *   Modified `microtrends.py` to limit clustering to the **top 500 items by Signal score**, ensuring more focused and dynamic themes.
-        *   Increased Hacker News story fetch limit in `hn_fetch.py` to 2000.
-    *   **UI/UX Refinements**:
-        *   Refactored the **Discover tab** into two sub-tabs: "Dashboard" (for visualizations and results) and "Run & Log" (for controls and real-time logging).
-        *   Implemented **real-time logging** in the "Run & Log" tab for better pipeline visibility.
-        *   Added a new **"Trend Quadrant" tab** for visualizing Discovery themes based on "Signal" vs. "Velocity."
-    *   **Bug Fixes**:
-        *   Resolved `SyntaxError` due to markdown in `tk_discover.py`.
-        *   Corrected `AttributeError` related to `story_tree` vs. `item_tree` in `tk_discover.py`.
+Redundant specification drafts, temporary README fragments, generated logs, and helper scripts have been removed (`Discover.txt`, `tmp_readme_*.txt`, `discover/themes.md`, `discover/themeupdate.txt`, `discover/logs.txt`, `temp_edit.py`). Compiled bytecode under `discover/src/__pycache__` is also deleted to keep the repository lean.
