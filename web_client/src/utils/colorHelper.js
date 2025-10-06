@@ -1,13 +1,9 @@
 
 const COLORS = [
-  '#ff6b35', // Orange
-  '#3ab4f2', // Blue
-  '#5ad1a4', // Green
-  '#b353ff', // Purple
-  '#ff8c00', // Dark Orange
-  '#00ced1', // Dark Turquoise
-  '#ff1493', // Deep Pink
-  '#32cd32', // Lime Green
+  '#4E79A7', '#F28E2B', '#E15759', '#76B7B2', '#59A14F',
+  '#EDC948', '#B07AA1', '#FF9DA7', '#9C755F', '#BAB0AC',
+  '#ff6b35', '#3ab4f2', '#5ad1a4', '#b353ff', '#ff8c00',
+  '#00ced1', '#ff1493', '#32cd32',
 ];
 
 const FIXED_COLORS = {

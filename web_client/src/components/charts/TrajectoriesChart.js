@@ -1,19 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, ReferenceLine, Label, LabelList, ResponsiveContainer } from 'recharts';
+import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, ReferenceLine, Label, ResponsiveContainer, Tooltip } from 'recharts';
 import { getColor } from '../../utils/colorHelper';
 
-const CustomizedLabel = ({ x, y, value }) => (
-  <text x={x} y={y} dy={-10} fontSize={12} textAnchor="middle" fill="#fff">
-    {value}
-  </text>
-);
+const CustomLegend = ({ data }) => {
+  return (
+    <div className="custom-legend">
+      {data.map(item => (
+        <div key={item.name} className="legend-item">
+          <div className="legend-color" style={{ backgroundColor: getColor(item.name) }}></div>
+          <div className="legend-label">{item.name}</div>
+        </div>
+      ))}
+    </div>
+  );
+};
 
-function TrajectoriesChart({ data, fixedMonths = null }) {
+function TrajectoriesChart({ data, fixedMonths = null, isMobile = false }) {
   const [numMonths, setNumMonths] = useState(fixedMonths || 6);
   const [chartData, setChartData] = useState([]);
   const [xDomain, setXDomain] = useState(['auto', 'auto']);
   const [yDomain, setYDomain] = useState(['auto', 'auto']);
   const [isSmallScreen, setIsSmallScreen] = useState(false);
+  const [hoveredPoint, setHoveredPoint] = useState(null);
 
   useEffect(() => {
     const updateScreenSize = () => setIsSmallScreen(window.innerWidth < 768);
@@ -25,6 +33,7 @@ function TrajectoriesChart({ data, fixedMonths = null }) {
   useEffect(() => {
     if (!data || data.length === 0) {
       setChartData([]);
+      setHoveredPoint(null);
       return;
     }
 
@@ -35,6 +44,7 @@ function TrajectoriesChart({ data, fixedMonths = null }) {
 
     if (filtered.length === 0) {
       setChartData([]);
+      setHoveredPoint(null);
       return;
     }
 
@@ -47,19 +57,22 @@ function TrajectoriesChart({ data, fixedMonths = null }) {
       return acc;
     }, {});
 
-    Object.values(trajectories).forEach(t => {
-      t.data.sort((a, b) => a.month.localeCompare(b.month));
-      const pointCount = t.data.length;
-      t.data.forEach((point, index) => {
+    const newChartData = Object.values(trajectories).map(t => {
+      const sortedData = [...t.data].sort((a, b) => a.month.localeCompare(b.month));
+      const pointCount = sortedData.length;
+      const newData = sortedData.map((point, index) => {
         const frac = pointCount > 1 ? index / (pointCount - 1) : 1;
-        point.size = 30 + (150 - 30) * frac;
-        if (index === pointCount - 1) {
-          point.label = t.name;
-        }
+        return {
+          ...point,
+          techName: t.name,
+          size: 30 + (150 - 30) * frac,
+        };
       });
+      return { ...t, data: newData };
     });
 
-    setChartData(Object.values(trajectories));
+    setChartData(newChartData);
+    setHoveredPoint(null);
 
     const allMomentum = filtered.map(d => d.momentum);
     const allConviction = filtered.map(d => d.conviction);
@@ -74,10 +87,28 @@ function TrajectoriesChart({ data, fixedMonths = null }) {
 
   }, [data, numMonths]);
 
+  const CustomTooltip = ({ active }) => {
+    if (!active || !hoveredPoint) {
+      return null;
+    }
+
+    const techLabel = hoveredPoint.techName || hoveredPoint.tech_name || hoveredPoint.seriesName || hoveredPoint.name;
+
+    if (!techLabel) {
+      return null;
+    }
+
+    return (
+      <div className="custom-tooltip" style={{ backgroundColor: 'rgba(0, 0, 0, 0.8)', padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}>
+        <p style={{ color: '#fff', margin: 0 }}>{techLabel}</p>
+      </div>
+    );
+  };
+
   const midX = xDomain[0] + (xDomain[1] - xDomain[0]) / 2;
   const midY = yDomain[0] + (yDomain[1] - yDomain[0]) / 2;
-  const chartHeight = isSmallScreen ? 320 : 520;
-  const chartMargin = isSmallScreen ? { top: 10, right: 30, bottom: 40, left: 30 } : { top: 20, right: 40, bottom: 60, left: 40 };
+  const chartHeight = (isSmallScreen || isMobile) ? 320 : 820;
+  const chartMargin = (isSmallScreen || isMobile) ? { top: 10, right: 30, bottom: 60, left: 30 } : { top: 20, right: 40, bottom: 80, left: 40 };
 
   return (
     <div className="chart-container full-width">
@@ -92,6 +123,7 @@ function TrajectoriesChart({ data, fixedMonths = null }) {
       {chartData.length > 0 ? (
         <ResponsiveContainer width="100%" height={chartHeight}>
           <ScatterChart margin={chartMargin}>
+            <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3' }} />
             <ZAxis dataKey="size" range={[20, 250]} />
             <XAxis type="number" dataKey="momentum" name="Momentum" domain={xDomain} tick={false} axisLine={{ stroke: "#666" }} tickLine={false}>
               <Label value="Momentum" offset={-25} position="insideBottom" fill="#fff" />
@@ -100,24 +132,31 @@ function TrajectoriesChart({ data, fixedMonths = null }) {
               <Label value="Conviction" angle={-90} offset={-20} position="insideLeft" fill="#fff" />
             </YAxis>
             {chartData.map((s) => (
-              <Scatter key={s.name} name={s.name} data={s.data} fill={getColor(s.name)} line={{ strokeOpacity: 0.5, strokeWidth: 2}} shape="circle">
-                <LabelList dataKey="label" content={<CustomizedLabel />} />
-              </Scatter>
+              <Scatter
+                key={s.name}
+                name={s.name}
+                data={s.data}
+                fill={getColor(s.name)}
+                line={{ strokeOpacity: 0.5, strokeWidth: 2}}
+                shape="circle"
+                onMouseEnter={(point) => {
+                  const dataPoint = point && point.payload ? point.payload : point;
+                  setHoveredPoint({ ...dataPoint, seriesName: s.name });
+                }}
+                onMouseLeave={() => setHoveredPoint(null)}
+              />
             ))}
             <ReferenceLine y={midY} stroke="#555" strokeDasharray="3 3" />
             <ReferenceLine x={midX} stroke="#555" strokeDasharray="3 3" />
           </ScatterChart>
         </ResponsiveContainer>
       ) : <p>No data for this time range.</p>}
+      {chartData.length > 0 && <CustomLegend data={chartData} />}
     </div>
   );
 }
 
 export default TrajectoriesChart;
-
-
-
-
 
 
 

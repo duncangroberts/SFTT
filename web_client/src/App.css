@@ -10,6 +10,31 @@
 .App {
   text-align: center;
 }
+
+.custom-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  margin-right: 20px;
+  margin-bottom: 10px;
+}
+
+.legend-color {
+  width: 15px;
+  height: 15px;
+  margin-right: 5px;
+}
+
+.legend-label {
+  font-size: 14px;
+  color: #fff;
+}
 .App-header {
   background-color: #1e1e1e;
   padding: 20px;
@@ -51,7 +76,7 @@ main {
 }
 .tab-content {
   width: 100%;
-  max-width: 1300px;
+  max-width: 1700px;
   margin: 0 auto;
   text-align: left;
 }
@@ -80,7 +105,7 @@ main {
 }
 .chart-container.full-width {
   width: 100%;
-  max-width: 1200px;
+  max-width: 1600px;
   margin: 0 auto;
 }
 
@@ -151,6 +176,7 @@ main {
   font-size: 0.9rem;
 }
 /* Recharts specific overrides */
+
 .recharts-legend-item-text {
     color: #aaa !important;
 }
@@ -163,7 +189,6 @@ main {
 .embed-container {
     background-color: #000000;
     color: #f0f0f0;
-    padding: 24px;
     margin: 0;
     box-sizing: border-box;
 }
@@ -302,7 +327,35 @@ html.embed-mode #root {
   overflow: auto;
 }
 
-.theme-stories details.story-debug summary {
+.themes-list details.story-debug summary {
   cursor: pointer;
   color: #ff6b35;
+}
+
+.tech-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.tech-list li {
+  padding: 10px;
+  border-bottom: 1px solid #333;
+  cursor: pointer;
+}
+
+.tech-list li:hover {
+  background-color: #333;
+}
+
+.tech-list-container {
+  overflow-y: auto;
+  height: 100%;
+}
+
+.desktop-notice {
+  text-align: center;
+  font-size: 0.9rem;
+  color: #aaa;
+  padding: 15px;
 }

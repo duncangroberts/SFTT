@@ -226,7 +226,7 @@ function DiscoverTab() {
   };
 
   const normaliseStory = (raw, fallbackId) => {
-    if (!raw) {
+    if (!raw || (!raw.title && !raw.headline && !raw.name)) {
       return null;
     }
     const idCandidate = raw.id !== undefined && raw.id !== null
@@ -245,7 +245,7 @@ function DiscoverTab() {
 
     return {
       id,
-      title: raw.title || raw.headline || raw.name || 'Untitled story',
+      title: raw.title || raw.headline || raw.name,
       url: raw.url || raw.link || null,
       source: raw.source || raw.publisher || null,
       summary: raw.summary || raw.abstract || raw.description || null,
@@ -299,23 +299,61 @@ function DiscoverTab() {
               </thead>
               <tbody>
                 {themes.map((theme) => (
-                  <tr
-                    key={theme.id}
-                    className={selectedTheme?.id === theme.id ? 'selected' : ''}
-                    onClick={() => handleThemeClick(theme)}
-                    tabIndex={0}
-                    role="button"
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        handleThemeClick(theme);
-                      }
-                    }}
-                  >
-                    <td>{theme.name}</td>
-                    <td>{theme.discussion_score}</td>
-                    <td>{theme.sentiment_score ? theme.sentiment_score.toFixed(2) : 'N/A'}</td>
-                  </tr>
+                  <React.Fragment key={theme.id}>
+                    <tr
+                      className={selectedTheme?.id === theme.id ? 'selected' : ''}
+                      onClick={() => handleThemeClick(theme)}
+                      tabIndex={0}
+                      role="button"
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          handleThemeClick(theme);
+                        }
+                      }}
+                    >
+                      <td>{theme.name}</td>
+                      <td>{theme.discussion_score}</td>
+                      <td>{theme.sentiment_score ? theme.sentiment_score.toFixed(2) : 'N/A'}</td>
+                    </tr>
+                    {selectedTheme?.id === theme.id && (
+                      <tr className="theme-stories-row">
+                        <td colSpan="3">
+                          <div className="theme-stories">
+                            <h3>Stories for {selectedTheme.name}</h3>
+                            {storiesLoading ? (
+                              <p>Loading stories...</p>
+                            ) : storiesError ? (
+                              <p>{storiesError}</p>
+                            ) : stories.length > 0 ? (
+                              <ul className="stories-list">
+                                {stories.map((story) => (
+                                  <li key={story.id}>
+                                    <div className="story-headline">
+                                      {story.url ? (
+                                        <a href={story.url} target="_blank" rel="noreferrer">
+                                          {story.title}
+                                        </a>
+                                      ) : (
+                                        <span>{story.title}</span>
+                                      )}
+                                    </div>
+                                    <div className="story-meta">
+                                      {story.source && <span>{story.source}</span>}
+                                      {renderStoryDate(story.published_at) && <span>{renderStoryDate(story.published_at)}</span>}
+                                    </div>
+                                    {story.summary && <p className="story-summary">{story.summary}</p>}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p>No stories linked to this theme yet.</p>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
@@ -325,39 +363,7 @@ function DiscoverTab() {
         </div>
       )}
 
-      {selectedTheme && (
-        <div className="theme-stories">
-          <h3>Stories for {selectedTheme.name}</h3>
-          {storiesLoading ? (
-            <p>Loading stories...</p>
-          ) : storiesError ? (
-            <p>{storiesError}</p>
-          ) : stories.length > 0 ? (
-            <ul className="stories-list">
-              {stories.map((story) => (
-                <li key={story.id}>
-                  <div className="story-headline">
-                    {story.url ? (
-                      <a href={story.url} target="_blank" rel="noreferrer">
-                        {story.title}
-                      </a>
-                    ) : (
-                      <span>{story.title}</span>
-                    )}
-                  </div>
-                  <div className="story-meta">
-                    {story.source && <span>{story.source}</span>}
-                    {renderStoryDate(story.published_at) && <span>{renderStoryDate(story.published_at)}</span>}
-                  </div>
-                  {story.summary && <p className="story-summary">{story.summary}</p>}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>No stories linked to this theme yet.</p>
-          )}
-        </div>
-      )}
+
     </div>
   );
 }
