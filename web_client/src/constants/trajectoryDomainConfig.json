@@ -1,0 +1,12 @@
+{
+  "momentum": {
+    "center": 1.43,
+    "halfRange": 2.5,
+    "padding": 0.2
+  },
+  "conviction": {
+    "center": 0.28,
+    "halfRange": 0.65,
+    "padding": 0.15
+  }
+}

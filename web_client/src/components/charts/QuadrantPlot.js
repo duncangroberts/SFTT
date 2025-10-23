@@ -1,14 +1,13 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ScatterChart, Scatter, XAxis, YAxis, Tooltip, ReferenceLine, Label, LabelList, Cell } from 'recharts';
 import { getColor } from '../../utils/colorHelper';
+import { computeTrajectoryDomains } from '../../constants/trajectoryDomains';
 
 function QuadrantPlot({ data }) {
   const [filteredData, setFilteredData] = useState([]);
   const [months, setMonths] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState('');
-  const [xDomain, setXDomain] = useState(['auto', 'auto']);
-  const [yDomain, setYDomain] = useState(['auto', 'auto']);
 
   useEffect(() => {
     if (data && data.length > 0) {
@@ -22,27 +21,20 @@ function QuadrantPlot({ data }) {
   }, [data]);
 
   useEffect(() => {
-    if (selectedMonth) {
-      const monthData = data.filter(d => d.month === selectedMonth);
-      setFilteredData(monthData);
-
-      if (monthData.length > 0) {
-        const allMomentum = monthData.map(d => d.momentum);
-        const allConviction = monthData.map(d => d.conviction);
-        const xMin = Math.min(...allMomentum);
-        const xMax = Math.max(...allMomentum);
-        const yMin = Math.min(...allConviction);
-        const yMax = Math.max(...allConviction);
-        const xPad = (xMax - xMin) * 0.1 || 1;
-        const yPad = (yMax - yMin) * 0.1 || 1;
-        setXDomain([xMin - xPad, xMax + xPad]);
-        setYDomain([yMin - yPad, yMax + yPad]);
-      }
+    if (!selectedMonth) {
+      setFilteredData([]);
+      return;
     }
+
+    const monthData = data.filter(d => d.month === selectedMonth);
+    setFilteredData(monthData);
   }, [selectedMonth, data]);
 
-  const midX = xDomain[0] + (xDomain[1] - xDomain[0]) / 2;
-  const midY = yDomain[0] + (yDomain[1] - yDomain[0]) / 2;
+  const domainConfig = useMemo(() => computeTrajectoryDomains(data), [data]);
+  const xDomain = domainConfig.momentum;
+  const yDomain = domainConfig.conviction;
+  const midX = domainConfig.midMomentum;
+  const midY = domainConfig.midConviction;
 
   return (
     <div className="chart-container full-width">

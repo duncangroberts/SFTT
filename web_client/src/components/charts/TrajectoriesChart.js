@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, ReferenceLine, Label, ResponsiveContainer, Tooltip } from 'recharts';
 import { getColor } from '../../utils/colorHelper';
+import { computeTrajectoryDomains } from '../../constants/trajectoryDomains';
 
 const CustomLegend = ({ data }) => {
   return (
@@ -18,8 +19,6 @@ const CustomLegend = ({ data }) => {
 function TrajectoriesChart({ data, fixedMonths = null, isMobile = false }) {
   const [numMonths, setNumMonths] = useState(fixedMonths || 6);
   const [chartData, setChartData] = useState([]);
-  const [xDomain, setXDomain] = useState(['auto', 'auto']);
-  const [yDomain, setYDomain] = useState(['auto', 'auto']);
   const [isSmallScreen, setIsSmallScreen] = useState(false);
   const [hoveredPoint, setHoveredPoint] = useState(null);
 
@@ -74,17 +73,6 @@ function TrajectoriesChart({ data, fixedMonths = null, isMobile = false }) {
     setChartData(newChartData);
     setHoveredPoint(null);
 
-    const allMomentum = filtered.map(d => d.momentum);
-    const allConviction = filtered.map(d => d.conviction);
-    const xMin = Math.min(...allMomentum);
-    const xMax = Math.max(...allMomentum);
-    const yMin = Math.min(...allConviction);
-    const yMax = Math.max(...allConviction);
-    const xPad = (xMax - xMin) * 0.2 || 1;
-    const yPad = (yMax - yMin) * 0.2 || 1;
-    setXDomain([xMin - xPad, xMax + xPad]);
-    setYDomain([yMin - yPad, yMax + yPad]);
-
   }, [data, numMonths]);
 
   const CustomTooltip = ({ active }) => {
@@ -105,8 +93,12 @@ function TrajectoriesChart({ data, fixedMonths = null, isMobile = false }) {
     );
   };
 
-  const midX = xDomain[0] + (xDomain[1] - xDomain[0]) / 2;
-  const midY = yDomain[0] + (yDomain[1] - yDomain[0]) / 2;
+  const domainConfig = useMemo(() => computeTrajectoryDomains(data), [data]);
+
+  const xDomain = domainConfig.momentum;
+  const yDomain = domainConfig.conviction;
+  const midX = domainConfig.midMomentum;
+  const midY = domainConfig.midConviction;
   const chartHeight = (isSmallScreen || isMobile) ? 320 : 820;
   const chartMargin = (isSmallScreen || isMobile) ? { top: 10, right: 30, bottom: 60, left: 30 } : { top: 20, right: 40, bottom: 80, left: 40 };
 
@@ -148,6 +140,13 @@ function TrajectoriesChart({ data, fixedMonths = null, isMobile = false }) {
             ))}
             <ReferenceLine y={midY} stroke="#555" strokeDasharray="3 3" />
             <ReferenceLine x={midX} stroke="#555" strokeDasharray="3 3" />
+
+            {/* Quadrant Labels */}
+            <Label value="Momentum Zone" position="insideTopRight" offset={10} fill="#aaa" style={{ fontSize: '14px' }} />
+            <Label value="Hype Trap" position="insideBottomRight" offset={10} fill="#aaa" style={{ fontSize: '14px' }} />
+            <Label value="Hidden Gems" position="insideTopLeft" offset={10} fill="#aaa" style={{ fontSize: '14px' }} />
+            <Label value="Sceptics' Corner" position="insideBottomLeft" offset={10} fill="#aaa" style={{ fontSize: '14px' }} />
+
           </ScatterChart>
         </ResponsiveContainer>
       ) : <p>No data for this time range.</p>}

@@ -17,7 +17,7 @@ The application is designed to be run as a desktop application with a Tkinter GU
     *   Analyst score entry for adjusting sentiment scores.
     *   Multiple data visualizations, including quadrant views, comment volume charts, trajectory plots, and trend charts.
     *   A dedicated "Discover" notebook with a theme browser, chart exports, and an LLM server control panel.
-*   **Web Client:** A React-based web client provides a modern and interactive dashboard for visualizing the collected data. It connects to a Firebase Firestore database to display real-time data.
+*   **Web Client:** A React-based web client provides a modern and interactive dashboard for visualizing the collected data. It connects to a Firebase Firestore database to display real-time data and now ships with a trajectory animation workspace for recording movement clips straight from the chart.
 *   **Local Data Storage:** All data is stored locally in SQLite databases, making the system portable and self-contained.
 
 ## How It Works (Architecture)
@@ -41,7 +41,7 @@ Firebase <---------- web_client
 *   **`db.py` & `discover/src/db_manager.py`:** Modules for managing the SQLite databases.
 *   **`llm_client.py` & `llm_runtime.py`:** A client for interacting with the local `llama.cpp` server.
 *   **`discover/src/analysis.py`:** The core of the "Discover" pipeline, responsible for theme extraction, sentiment analysis, and merging.
-*   **`web_client/`:** The React-based web client for data visualization.
+*   **`web_client/`:** The React-based web client for data visualization, now including the Trajectory Animations tab and a shared axis-domain helper (`src/constants/trajectoryDomainConfig.json`) so every trajectory-style chart stays aligned.
 
 ## Installation and Setup
 
@@ -90,6 +90,12 @@ To get the system up and running, you will need to set up both the Python backen
 
 3.  **Configuration:**
     *   The Firebase configuration is located in `web_client/src/firebase.js`. You will need to replace the placeholder configuration with your own Firebase project's configuration.
+    *   Trajectory chart domains are stored in `web_client/src/constants/trajectoryDomainConfig.json`. This file keeps the momentum/conviction midlines and ranges consistent across the dashboard, quadrant plot, embeds, and the animation workspace. Adjust the numbers here if you want to widen the axes, then rebuild and redeploy.
+
+#### Trajectory Animations and Motion Capture
+
+*   The dashboard now includes a **Trajectory Animations** tab. It streams the same monthly sentiment data as the main chart but renders an SVG animation with play/pause controls, frame stepping, and export-friendly trails—ideal for podcasts or screen recordings.
+*   The animation player uses the shared axis envelope described above, ensuring that quadrant membership stays comparable month-on-month when you capture new clips.
 
 ## Usage
 
