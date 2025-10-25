@@ -152,6 +152,16 @@
       "patterns": [
         "3D printing"
       ]
+    },
+    {
+      "id": "BCI",
+      "name": "BCI",
+      "patterns": [
+        "BCI",
+        "Brain Computer Interface",
+        "Neuralink",
+        "neurotech"
+      ]
     }
   ],
   "weights": {

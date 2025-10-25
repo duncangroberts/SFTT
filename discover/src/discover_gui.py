@@ -27,7 +27,9 @@ class DiscoverTab(ttk.Frame):
         # --- Themes tab ---
         themes_tab = ttk.Frame(self.notebook)
         themes_tab.grid_rowconfigure(1, weight=3)
-        themes_tab.grid_rowconfigure(2, weight=1)
+        themes_tab.grid_rowconfigure(2, weight=2)
+        themes_tab.grid_rowconfigure(3, weight=2)
+        themes_tab.grid_rowconfigure(4, weight=1)
         themes_tab.grid_columnconfigure(0, weight=1)
         self.notebook.add(themes_tab, text="Themes")
 
@@ -60,8 +62,46 @@ class DiscoverTab(ttk.Frame):
         self.tree.pack(fill="both", expand=True)
         self.tree.bind("<<TreeviewSelect>>", self.on_theme_select)
 
+        flatlined_frame = ttk.LabelFrame(themes_tab, text="Flatlined Themes")
+        flatlined_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        flatlined_frame.grid_rowconfigure(0, weight=1)
+        flatlined_frame.grid_columnconfigure(0, weight=1)
+
+        self.flatlined_tree = ttk.Treeview(flatlined_frame, columns=columns, show="headings", style='Brand.Treeview')
+        self.flatlined_tree.heading("name", text="Theme")
+        self.flatlined_tree.heading("score", text="Discussion Score")
+        self.flatlined_tree.heading("sentiment", text="Sentiment")
+        self.flatlined_tree.heading("score_trend", text="Discussion Trend")
+        self.flatlined_tree.heading("sentiment_trend", text="Sentiment Trend")
+        self.flatlined_tree.column("name", anchor="w", stretch=True)
+        self.flatlined_tree.column("score", anchor="center", width=120)
+        self.flatlined_tree.column("sentiment", anchor="center", width=110)
+        self.flatlined_tree.column("score_trend", anchor="center", width=140)
+        self.flatlined_tree.column("sentiment_trend", anchor="center", width=140)
+        self.flatlined_tree.pack(fill="both", expand=True)
+        self.flatlined_tree.bind("<<TreeviewSelect>>", self.on_theme_select)
+
+        coma_frame = ttk.LabelFrame(themes_tab, text="Coma Themes")
+        coma_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        coma_frame.grid_rowconfigure(0, weight=1)
+        coma_frame.grid_columnconfigure(0, weight=1)
+
+        self.coma_tree = ttk.Treeview(coma_frame, columns=columns, show="headings", style='Brand.Treeview')
+        self.coma_tree.heading("name", text="Theme")
+        self.coma_tree.heading("score", text="Discussion Score")
+        self.coma_tree.heading("sentiment", text="Sentiment")
+        self.coma_tree.heading("score_trend", text="Discussion Trend")
+        self.coma_tree.heading("sentiment_trend", text="Sentiment Trend")
+        self.coma_tree.column("name", anchor="w", stretch=True)
+        self.coma_tree.column("score", anchor="center", width=120)
+        self.coma_tree.column("sentiment", anchor="center", width=110)
+        self.coma_tree.column("score_trend", anchor="center", width=140)
+        self.coma_tree.column("sentiment_trend", anchor="center", width=140)
+        self.coma_tree.pack(fill="both", expand=True)
+        self.coma_tree.bind("<<TreeviewSelect>>", self.on_theme_select)
+
         story_frame = ttk.LabelFrame(themes_tab, text="Stories for Theme")
-        story_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        story_frame.grid(row=4, column=0, sticky="nsew", padx=10, pady=(0, 10))
         story_frame.grid_rowconfigure(0, weight=1)
         story_frame.grid_columnconfigure(0, weight=1)
 
@@ -238,17 +278,29 @@ class DiscoverTab(ttk.Frame):
         pass
 
     def refresh_themes(self):
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+        tree_widgets = [self.tree, self.flatlined_tree, self.coma_tree]
+        for widget in tree_widgets:
+            if widget:
+                for item in widget.get_children():
+                    widget.delete(item)
         try:
             db_manager.cleanup_theme_story_links()
         except Exception as exc:
             self.log(f"Failed to clean theme links: {exc}")
-        themes = db_manager.get_top_themes()
+        active_themes = db_manager.get_top_themes()
+        flatlined_themes = db_manager.get_top_flatlined_themes(limit=10)
+        coma_themes = db_manager.get_top_coma_themes(limit=10)
+        self._populate_theme_tree(self.tree, active_themes)
+        self._populate_theme_tree(self.flatlined_tree, flatlined_themes)
+        self._populate_theme_tree(self.coma_tree, coma_themes)
+
+    def _populate_theme_tree(self, tree_widget, themes):
+        if tree_widget is None:
+            return
         for theme in themes:
             sentiment = theme.get("sentiment_score")
             sentiment_display = f"{sentiment:.2f}" if sentiment is not None else "0.00"
-            self.tree.insert(
+            tree_widget.insert(
                 "",
                 tk.END,
                 iid=str(theme["id"]),
@@ -256,11 +308,18 @@ class DiscoverTab(ttk.Frame):
                     theme["name"],
                     theme["discussion_score"],
                     sentiment_display,
-                    theme["discussion_score_trend"],
-                    theme["sentiment_score_trend"]
+                    theme.get("discussion_score_trend"),
+                    theme.get("sentiment_score_trend")
                 ),
                 tags=("theme-row",)
             )
+
+    def _clear_other_tree_selections(self, active_tree):
+        for tree_widget in (self.tree, self.flatlined_tree, self.coma_tree):
+            if tree_widget is None or tree_widget is active_tree:
+                continue
+            for item in tree_widget.selection():
+                tree_widget.selection_remove(item)
 
     def populate_model_dropdown(self):
         try:
@@ -279,9 +338,13 @@ class DiscoverTab(ttk.Frame):
             self.model_combo.set("Error finding models")
 
     def on_theme_select(self, event):
-        selection = self.tree.selection()
+        tree_widget = getattr(event, "widget", None)
+        if tree_widget not in (self.tree, self.flatlined_tree, self.coma_tree):
+            return
+        selection = tree_widget.selection()
         if not selection:
             return
+        self._clear_other_tree_selections(tree_widget)
         item_id = selection[0]
         try:
             theme_id = int(item_id)

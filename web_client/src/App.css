@@ -130,6 +130,25 @@ main {
   margin-top: 2rem;
   font-size: 1rem;
 }
+.themes-subsection {
+  margin-top: 3rem;
+}
+.themes-subsection h3 {
+  margin-bottom: 0.75rem;
+  color: #ff6b35;
+}
+.themes-subsection table {
+  margin-top: 1rem;
+}
+.app-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ddd;
+  font-size: 1.1rem;
+  text-align: center;
+}
 .themes-list th, .themes-list td {
   border: 1px solid #444;
   padding: 12px 15px;
@@ -191,6 +210,14 @@ main {
     color: #f0f0f0;
     margin: 0;
     box-sizing: border-box;
+}
+
+.embed-container.ticker-embed {
+  padding: 0;
+}
+
+.embed-container.ticker-embed .trajectory-ticker-tab {
+  padding: 16px 24px;
 }
 
 .embed-container .chart-container {
@@ -705,6 +732,173 @@ html.embed-mode #root {
   text-align: center;
   color: #aaaaaa;
   font-size: 1rem;
+}
+
+.trajectory-ticker-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+  max-width: 1700px;
+  margin: 0 auto;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.trajectory-ticker-tab .ticker-header h2 {
+  margin: 0;
+  font-size: 1.6rem;
+  color: #ff6b35;
+}
+
+.trajectory-ticker-tab .ticker-header p {
+  margin: 0;
+  color: #bbbbbb;
+  font-size: 0.98rem;
+  max-width: 960px;
+  line-height: 1.6;
+}
+
+.trajectory-ticker-tab .ticker-body {
+  background-color: #d11f84;
+  border: 1px solid #232323;
+  border-radius: 14px;
+  padding: 18px;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  justify-content: center;
+  align-items: center;
+}
+
+.trajectory-ticker-tab .ticker-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #bfbfbf;
+  font-size: 0.9rem;
+  align-self: flex-end;
+}
+
+.trajectory-ticker-tab .ticker-controls label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.trajectory-ticker-tab .ticker-controls input[type='range'] {
+  flex: 1 1 auto;
+  min-width: 160px;
+}
+
+.trajectory-ticker-tab .ticker-controls span {
+  width: 4ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #ff6b35;
+}
+
+.trajectory-ticker-tab .ticker-controls-footer {
+  padding: 0 6px;
+}
+
+.trajectory-ticker-tab .ticker-controls-footer input[type='range'] {
+  flex: 0 1 240px;
+}
+
+.trajectory-ticker-tab .ticker-status {
+  color: #aaaaaa;
+  font-size: 1rem;
+  text-align: center;
+  margin: 0;
+}
+
+.trajectory-ticker-tab .ticker-status.error {
+  color: #f2545b;
+}
+
+.trajectory-ticker-tab .ticker-viewport {
+  width: 100%;
+  align-self: stretch;
+  overflow: hidden;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(8, 8, 8, 0.95), rgba(14, 14, 14, 0.95));
+  position: relative;
+}
+
+.trajectory-ticker-tab .ticker-track {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  will-change: transform;
+  transform: translateX(0);
+}
+
+.trajectory-ticker-tab .ticker-item {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 28px;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  white-space: nowrap;
+  color: #f2f2f2;
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+  flex: 0 0 auto;
+}
+
+.trajectory-ticker-tab .ticker-item:last-child {
+  border-right: none;
+}
+
+.trajectory-ticker-tab .tech-name {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #ffffff;
+}
+
+.trajectory-ticker-tab .delta {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.trajectory-ticker-tab .delta.positive {
+  color: #5ad1a4;
+}
+
+.trajectory-ticker-tab .delta.negative {
+  color: #f2545b;
+}
+
+.trajectory-ticker-tab .window {
+  color: #9a9a9a;
+  font-size: 0.88rem;
+}
+
+.trajectory-ticker-tab .badge {
+  font-size: 0.72rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 1px solid transparent;
+}
+
+.trajectory-ticker-tab .badge.success {
+  background-color: rgba(90, 209, 164, 0.18);
+  border-color: rgba(90, 209, 164, 0.4);
+  color: #5ad1a4;
+}
+
+.trajectory-ticker-tab .badge.warning {
+  background-color: rgba(255, 193, 86, 0.16);
+  border-color: rgba(255, 193, 86, 0.4);
+  color: #ffc156;
 }
 
 @media (max-width: 1200px) {

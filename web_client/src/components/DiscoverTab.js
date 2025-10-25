@@ -12,6 +12,8 @@ import {
 } from 'firebase/firestore';
 
 const STORIES_LIMIT = 20;
+const STATUS_LIST_LIMIT = 10;
+const THEME_TABLE_COLUMN_COUNT = 4;
 
 function DiscoverTab() {
   const [themes, setThemes] = useState([]);
@@ -20,6 +22,27 @@ function DiscoverTab() {
   const [stories, setStories] = useState([]);
   const [storiesLoading, setStoriesLoading] = useState(false);
   const [storiesError, setStoriesError] = useState(null);
+
+  const normaliseStatus = (value) => (typeof value === 'string' ? value.toLowerCase() : '');
+
+  const formatStatus = (value) => {
+    const status = normaliseStatus(value);
+    if (!status) {
+      return 'Stable';
+    }
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
+  const activeThemes = themes.filter((theme) => {
+    const status = normaliseStatus(theme.discussion_score_trend);
+    return status !== 'coma' && status !== 'flatlined';
+  });
+  const flatlinedThemes = themes
+    .filter((theme) => normaliseStatus(theme.discussion_score_trend) === 'flatlined')
+    .slice(0, STATUS_LIST_LIMIT);
+  const comaThemes = themes
+    .filter((theme) => normaliseStatus(theme.discussion_score_trend) === 'coma')
+    .slice(0, STATUS_LIST_LIMIT);
 
   useEffect(() => {
     const themesCollection = collection(db, 'themes');
@@ -267,8 +290,6 @@ function DiscoverTab() {
     return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
   };
 
-  const normaliseDateDesc = (a, b) => normaliseDate(b) - normaliseDate(a);
-
   const renderStoryDate = (value) => {
     const timestamp = normaliseDate(value);
     if (!timestamp) {
@@ -281,6 +302,66 @@ function DiscoverTab() {
     });
   };
 
+  const renderThemeTableRows = (themeList) =>
+    themeList.map((theme) => (
+      <React.Fragment key={theme.id}>
+        <tr
+          className={selectedTheme?.id === theme.id ? 'selected' : ''}
+          onClick={() => handleThemeClick(theme)}
+          tabIndex={0}
+          role="button"
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              handleThemeClick(theme);
+            }
+          }}
+        >
+          <td>{theme.name}</td>
+          <td>{theme.discussion_score}</td>
+          <td>{theme.sentiment_score ? theme.sentiment_score.toFixed(2) : 'N/A'}</td>
+          <td>{formatStatus(theme.discussion_score_trend)}</td>
+        </tr>
+        {selectedTheme?.id === theme.id && (
+          <tr className="theme-stories-row">
+            <td colSpan={THEME_TABLE_COLUMN_COUNT}>
+              <div className="theme-stories">
+                <h3>Stories for {selectedTheme.name}</h3>
+                {storiesLoading ? (
+                  <p>Loading stories...</p>
+                ) : storiesError ? (
+                  <p>{storiesError}</p>
+                ) : stories.length > 0 ? (
+                  <ul className="stories-list">
+                    {stories.map((story) => (
+                      <li key={story.id}>
+                        <div className="story-headline">
+                          {story.url ? (
+                            <a href={story.url} target="_blank" rel="noreferrer">
+                              {story.title}
+                            </a>
+                          ) : (
+                            <span>{story.title}</span>
+                          )}
+                        </div>
+                        <div className="story-meta">
+                          {story.source && <span>{story.source}</span>}
+                          {renderStoryDate(story.published_at) && <span>{renderStoryDate(story.published_at)}</span>}
+                        </div>
+                        {story.summary && <p className="story-summary">{story.summary}</p>}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>No stories linked to this theme yet.</p>
+                )}
+              </div>
+            </td>
+          </tr>
+        )}
+      </React.Fragment>
+    ));
+
   return (
     <div className="tab-content">
       <h2>Discovered Themes</h2>
@@ -288,77 +369,56 @@ function DiscoverTab() {
         <p>Loading themes...</p>
       ) : (
         <div className="themes-list">
-          {themes.length > 0 ? (
+          {activeThemes.length > 0 ? (
             <table>
               <thead>
                 <tr>
                   <th>Theme</th>
                   <th>Discussion Score</th>
                   <th>Sentiment</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {themes.map((theme) => (
-                  <React.Fragment key={theme.id}>
-                    <tr
-                      className={selectedTheme?.id === theme.id ? 'selected' : ''}
-                      onClick={() => handleThemeClick(theme)}
-                      tabIndex={0}
-                      role="button"
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          handleThemeClick(theme);
-                        }
-                      }}
-                    >
-                      <td>{theme.name}</td>
-                      <td>{theme.discussion_score}</td>
-                      <td>{theme.sentiment_score ? theme.sentiment_score.toFixed(2) : 'N/A'}</td>
-                    </tr>
-                    {selectedTheme?.id === theme.id && (
-                      <tr className="theme-stories-row">
-                        <td colSpan="3">
-                          <div className="theme-stories">
-                            <h3>Stories for {selectedTheme.name}</h3>
-                            {storiesLoading ? (
-                              <p>Loading stories...</p>
-                            ) : storiesError ? (
-                              <p>{storiesError}</p>
-                            ) : stories.length > 0 ? (
-                              <ul className="stories-list">
-                                {stories.map((story) => (
-                                  <li key={story.id}>
-                                    <div className="story-headline">
-                                      {story.url ? (
-                                        <a href={story.url} target="_blank" rel="noreferrer">
-                                          {story.title}
-                                        </a>
-                                      ) : (
-                                        <span>{story.title}</span>
-                                      )}
-                                    </div>
-                                    <div className="story-meta">
-                                      {story.source && <span>{story.source}</span>}
-                                      {renderStoryDate(story.published_at) && <span>{renderStoryDate(story.published_at)}</span>}
-                                    </div>
-                                    {story.summary && <p className="story-summary">{story.summary}</p>}
-                                  </li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <p>No stories linked to this theme yet.</p>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                ))}
+                {renderThemeTableRows(activeThemes)}
               </tbody>
             </table>
           ) : (
-            <p>No themes found in the database.</p>
+            <p>No active themes found in the database.</p>
+          )}
+
+          {flatlinedThemes.length > 0 && (
+            <div className="themes-subsection">
+              <h3>Flatlined Themes</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Theme</th>
+                    <th>Discussion Score</th>
+                    <th>Sentiment</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>{renderThemeTableRows(flatlinedThemes)}</tbody>
+              </table>
+            </div>
+          )}
+
+          {comaThemes.length > 0 && (
+            <div className="themes-subsection">
+              <h3>Coma Themes</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Theme</th>
+                    <th>Discussion Score</th>
+                    <th>Sentiment</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>{renderThemeTableRows(comaThemes)}</tbody>
+              </table>
+            </div>
           )}
         </div>
       )}

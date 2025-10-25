@@ -1,0 +1,10 @@
+<!-- Copy this snippet into any page to embed the Trajectory Ticker -->
+<iframe
+  src="https://your-domain/embed/trajectory-ticker"
+  title="Trajectory Ticker"
+  width="1200"
+  height="220"
+  frameborder="0"
+  style="border:0; overflow:hidden; width:100%; max-width:1200px; height:220px;"
+  allowtransparency="true">
+</iframe>

@@ -51,14 +51,18 @@ class QuadrantView(ttk.Frame):
                            discussion_score as latest_signal,
                            CASE discussion_score_trend
                                WHEN 'rising' THEN 1
-                               WHEN 'dying' THEN -1
+                               WHEN 'revived' THEN 1
+                               WHEN 'flatlined' THEN -1
+                               WHEN 'falling' THEN -1
                                ELSE 0
                            END as latest_delta
                        FROM themes
+                       WHERE discussion_score_trend IS NULL
+                          OR discussion_score_trend NOT IN ('coma', 'flatlined')
                        ORDER BY discussion_score DESC
                        LIMIT 20""",
-                    conn
-                )
+                   conn
+               )
         except Exception as e:
             self._style_no_data_message(f"Failed to load trend data:\n{e}")
             return

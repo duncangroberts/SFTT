@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ReferenceLine, ResponsiveContainer } from 'recharts';
 import { db } from '../../firebase';
 import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { useAuthContext } from '../../contexts/AuthContext';
 
 function EmbedDiscoverCharts() {
   useEffect(() => {
@@ -17,7 +18,15 @@ function EmbedDiscoverCharts() {
   const [loading, setLoading] = useState(true);
   const [isSmallScreen, setIsSmallScreen] = useState(false);
 
+  const normaliseStatus = (value) => (typeof value === 'string' ? value.toLowerCase() : '');
+  const { authReady } = useAuthContext();
+
   useEffect(() => {
+    if (!authReady) {
+      return undefined;
+    }
+    setLoading(true);
+    setThemes([]);
     const themesCollection = collection(db, 'themes');
     const q = query(themesCollection, orderBy('discussion_score', 'desc'), limit(10));
 
@@ -26,12 +35,16 @@ function EmbedDiscoverCharts() {
       querySnapshot.forEach((doc) => {
         themesData.push({ id: doc.id, ...doc.data() });
       });
-      setThemes(themesData);
+      const filteredThemes = themesData.filter((theme) => {
+        const status = normaliseStatus(theme.discussion_score_trend);
+        return status !== 'coma' && status !== 'flatlined';
+      });
+      setThemes(filteredThemes);
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [authReady]);
 
   useEffect(() => {
     const updateScreenSize = () => setIsSmallScreen(window.innerWidth < 900);
@@ -47,7 +60,9 @@ function EmbedDiscoverCharts() {
 
   return (
     <div className="embed-container">
-      {loading ? (
+      {!authReady ? (
+        <p>Connecting to data…</p>
+      ) : loading ? (
         <p>Loading charts...</p>
       ) : themes.length > 0 ? (
         <div className="charts-wrapper">

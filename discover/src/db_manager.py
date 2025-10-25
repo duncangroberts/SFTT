@@ -105,6 +105,31 @@ def get_all_themes_with_embeddings():
         themes = cursor.fetchall()
         return [dict(theme) for theme in themes]
 
+def update_lifecycle_statuses(flatlined_days=14, coma_grace_days=7):
+    """Updates discussion_score_trend based on inactivity windows."""
+    coma_days = flatlined_days + coma_grace_days
+    with get_db_connection() as conn:
+        conn.execute(
+            """
+            UPDATE themes
+            SET discussion_score_trend = 'coma'
+            WHERE updated_at IS NOT NULL
+              AND julianday('now') - julianday(updated_at) >= ?
+            """,
+            (coma_days,)
+        )
+        conn.execute(
+            """
+            UPDATE themes
+            SET discussion_score_trend = 'flatlined'
+            WHERE updated_at IS NOT NULL
+              AND julianday('now') - julianday(updated_at) >= ?
+              AND julianday('now') - julianday(updated_at) < ?
+            """,
+            (flatlined_days, coma_days)
+        )
+        conn.commit()
+
 def link_story_to_theme(story_id, theme_id):
     """Associates a story with exactly one theme, replacing any previous link."""
     with get_db_connection() as conn:
@@ -199,11 +224,40 @@ def get_top_themes(limit=10):
     """Retrieves the top themes based on discussion score."""
     with get_db_connection() as conn:
         cursor = conn.execute(
-            "SELECT * FROM themes ORDER BY discussion_score DESC LIMIT ?",
+            """
+            SELECT * FROM themes
+            WHERE discussion_score_trend IS NULL
+               OR discussion_score_trend NOT IN ('coma', 'flatlined')
+            ORDER BY discussion_score DESC
+            LIMIT ?
+            """,
             (limit,)
         )
         themes = cursor.fetchall()
         return [dict(theme) for theme in themes]
+
+def get_top_themes_by_status(status, limit=10):
+    """Retrieves the top themes for a given lifecycle status."""
+    with get_db_connection() as conn:
+        cursor = conn.execute(
+            """
+            SELECT * FROM themes
+            WHERE discussion_score_trend = ?
+            ORDER BY discussion_score DESC
+            LIMIT ?
+            """,
+            (status, limit)
+        )
+        themes = cursor.fetchall()
+        return [dict(theme) for theme in themes]
+
+def get_top_flatlined_themes(limit=10):
+    """Returns top themes currently marked as flatlined."""
+    return get_top_themes_by_status('flatlined', limit=limit)
+
+def get_top_coma_themes(limit=10):
+    """Returns top themes currently marked as coma."""
+    return get_top_themes_by_status('coma', limit=limit)
 
 def purge_discover_database():
     """Deletes all discovery data, including theme/story associations."""

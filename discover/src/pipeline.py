@@ -39,6 +39,7 @@ def run_discovery_pipeline(days=30, score_threshold=100, comments_threshold=50):
     """Runs the full pipeline to discover and score themes from Hacker News."""
     print("Starting Discovery Pipeline...")
     db_manager.setup_database() # Ensure DB is up to date
+    db_manager.update_lifecycle_statuses()
 
     # 1. Fetch top stories
     stories = hn_fetcher.fetch_stories_for_past_days(
@@ -116,11 +117,17 @@ def run_discovery_pipeline(days=30, score_threshold=100, comments_threshold=50):
             theme = db_manager.get_or_create_theme(theme_name, theme_embedding)
             # Add the new theme to our in-memory list for this run
             if theme:
-                existing_themes.append(theme)
+                existing_themes.append({key: theme[key] for key in ('id', 'name', 'embedding') if key in theme})
 
         if not theme:
             print(f"  - CRITICAL: Could not find or create a theme for '{theme_name}'. Skipping story.")
             # Mark story as processed anyway to avoid retrying it
+            db_manager.add_story(story_id, story.get('title', ''), story_url)
+            continue
+
+        theme_details = db_manager.get_theme_by_id(theme['id'])
+        if theme_details is None:
+            print(f"  - CRITICAL: Theme ID {theme['id']} could not be reloaded from the database. Skipping story.")
             db_manager.add_story(story_id, story.get('title', ''), story_url)
             continue
 
@@ -136,11 +143,15 @@ def run_discovery_pipeline(days=30, score_threshold=100, comments_threshold=50):
         if old_sentiment_score is None: old_sentiment_score = 0.0
         new_sentiment_score = (old_sentiment_score + sentiment_score) / 2 # Average the sentiment
 
-        discussion_trend = 'rising' # Always rising when new discussion occurs
+        previous_trend = (theme_details.get('discussion_score_trend') or '').lower()
+        if previous_trend == 'coma':
+            discussion_trend = 'revived'
+        else:
+            discussion_trend = 'rising'
         sentiment_trend = scoring.determine_trend(old_sentiment_score, new_sentiment_score)
         
         db_manager.update_theme(
-            theme_id=theme['id'],
+            theme_id=theme_details['id'],
             discussion_score=discussion_score,
             sentiment_score=new_sentiment_score,
             discussion_trend=discussion_trend,

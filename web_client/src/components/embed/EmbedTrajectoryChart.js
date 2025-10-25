@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import TrajectoriesChart from '../charts/TrajectoriesChart';
+import { useAuthContext } from '../../contexts/AuthContext';
 
 function EmbedTrajectoryChart() {
   useEffect(() => {
@@ -20,6 +21,7 @@ function EmbedTrajectoryChart() {
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [selectedTech, setSelectedTech] = useState(null);
+  const { authReady } = useAuthContext();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -27,6 +29,12 @@ function EmbedTrajectoryChart() {
   }, []);
 
   useEffect(() => {
+    if (!authReady) {
+      return undefined;
+    }
+    setLoading(true);
+    setAllData([]);
+    setSelectedTech(null);
     const sentimentCollection = collection(db, 'monthly_sentiment');
     const unsubscribe = onSnapshot(sentimentCollection, (querySnapshot) => {
       const data = [];
@@ -41,7 +49,7 @@ function EmbedTrajectoryChart() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [authReady]);
 
   const handleTechClick = (tech) => {
     setSelectedTech(tech);
@@ -91,7 +99,9 @@ function EmbedTrajectoryChart() {
   // Desktop view
   return (
     <div className="embed-container">
-      {loading ? (
+      {!authReady ? (
+        <p>Connecting to data…</p>
+      ) : loading ? (
         <p>Loading chart...</p>
       ) : allData.length > 0 ? (
         <TrajectoriesChart data={allData} fixedMonths={3} isMobile={isMobile} />

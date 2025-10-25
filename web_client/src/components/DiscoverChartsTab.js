@@ -17,7 +17,13 @@ function DiscoverChartsTab() {
       querySnapshot.forEach((doc) => {
         themesData.push({ id: doc.id, ...doc.data() });
       });
-      setThemes(themesData);
+      const filteredThemes = themesData.filter((theme) => {
+        const statusValue = typeof theme.discussion_score_trend === 'string'
+          ? theme.discussion_score_trend.toLowerCase()
+          : '';
+        return statusValue !== 'coma' && statusValue !== 'flatlined';
+      });
+      setThemes(filteredThemes);
       setLoading(false);
     });
 

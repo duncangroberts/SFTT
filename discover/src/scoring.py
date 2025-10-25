@@ -18,15 +18,30 @@ def determine_trend(old_score, new_score, threshold=0.1):
         return "falling"
     return "stable"
 
-def update_theme_lifecycle(theme, inactivity_days=14):
-    """Checks if a theme should be marked as 'dying' due to inactivity."""
-    # This function is intended to be called periodically on all themes.
-    # For now, we can simulate this check when a theme is retrieved.
+def update_theme_lifecycle(theme, flatlined_days=14, coma_grace_days=7, now=None):
+    """Determines lifecycle status based on inactivity windows."""
     last_updated_str = theme.get('updated_at')
-    if last_updated_str:
+    if not last_updated_str:
+        return theme.get('discussion_score_trend', 'stable')
+
+    if now is None:
+        now = datetime.datetime.now()
+
+    try:
         last_updated_date = datetime.datetime.fromisoformat(last_updated_str)
-        if (datetime.datetime.now() - last_updated_date).days > inactivity_days:
-            return "dying"
+    except ValueError:
+        try:
+            last_updated_date = datetime.datetime.strptime(last_updated_str, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return theme.get('discussion_score_trend', 'stable')
+
+    elapsed_days = (now - last_updated_date).days
+    coma_threshold = flatlined_days + coma_grace_days
+
+    if elapsed_days >= coma_threshold:
+        return "coma"
+    if elapsed_days >= flatlined_days:
+        return "flatlined"
     return theme.get('discussion_score_trend', 'stable')
 
 if __name__ == '__main__':

@@ -4,6 +4,7 @@ import DiscoverTab from './DiscoverTab';
 import TechTrendsTab from './TechTrendsTab';
 import DiscoverChartsTab from './DiscoverChartsTab';
 import TrajectoryAnimationsTab from './TrajectoryAnimationsTab';
+import TrajectoryTickerTab from './TrajectoryTickerTab';
 
 function Dashboard() {
   const [activeTab, setActiveTab] = useState('discover');
@@ -16,6 +17,8 @@ function Dashboard() {
         return <DiscoverChartsTab />;
       case 'trajectory_animations':
         return <TrajectoryAnimationsTab />;
+      case 'trajectory_ticker':
+        return <TrajectoryTickerTab />;
       case 'discover':
       default:
         return <DiscoverTab />;
@@ -39,6 +42,12 @@ function Dashboard() {
           onClick={() => setActiveTab('trajectory_animations')}
         >
           Trajectory Animations
+        </button>
+        <button 
+          className={activeTab === 'trajectory_ticker' ? 'active' : ''} 
+          onClick={() => setActiveTab('trajectory_ticker')}
+        >
+          Trajectory Ticker
         </button>
         <button 
           className={activeTab === 'discover_charts' ? 'active' : ''} 
